@@ -1,67 +1,169 @@
-#include <linux/compiler.h>
-#include <linux/version.h>
-#include <linux/slab.h>
-#include <linux/task_work.h>
-#include <linux/thread_info.h>
-#include <linux/seccomp.h>
-#include <linux/printk.h>
-#include <linux/sched.h>
-#include <linux/sched/signal.h>
-#include <linux/string.h>
-#include <linux/types.h>
-#include <linux/uaccess.h>
-#include <linux/uidgid.h>
-
-#include "policy/allowlist.h"
-#include "hook/setuid_hook.h"
-#include "klog.h" // IWYU pragma: keep
-#include "manager/manager_identity.h"
-#include "infra/seccomp_cache.h"
-#include "supercall/supercall.h"
-#include "hook/tp_marker.h"
-#include "feature/kernel_umount.h"
-#include "feature/mount_hide.h"
-
-int ksu_handle_setresuid(uid_t old_uid, uid_t new_uid)
+static __always_inline void ksu_handle_setresuid_cred(struct cred *new, const struct cred *old)
 {
-    // we rely on the fact that zygote always call setresuid(3) with same uids
+	if (!new || !old)
+		return;
 
-    if (unlikely(is_uid_manager(new_uid))) {
-        spin_lock_irq(&current->sighand->siglock);
-        ksu_seccomp_allow_cache(current->seccomp.filter, __NR_reboot);
-        ksu_set_task_tracepoint_flag(current);
-        spin_unlock_irq(&current->sighand->siglock);
+	uid_t new_uid = ksu_get_uid_t(new->uid);
+	uid_t old_uid = ksu_get_uid_t(old->uid);
 
-        ksu_install_fd();
-        return 0;
-    }
+	// old process is not root, ignore it.
+	if (unlikely(!!old_uid))
+		return;
 
-    if (ksu_is_allow_uid_for_current(new_uid)) {
-        if (current->seccomp.mode == SECCOMP_MODE_FILTER && current->seccomp.filter) {
-            spin_lock_irq(&current->sighand->siglock);
-            ksu_seccomp_allow_cache(current->seccomp.filter, __NR_reboot);
-            spin_unlock_irq(&current->sighand->siglock);
-        }
-        ksu_set_task_tracepoint_flag(current);
-    } else {
-        ksu_clear_task_tracepoint_flag_if_needed(current);
-    }
+	if (IS_ENABLED(CONFIG_KSU_DEBUG))
+		pr_info("handle_setresuid from %d to %d\n", old_uid, new_uid);
 
-    // Handle kernel umount
-    ksu_handle_umount(old_uid, new_uid);
+	// we dont have those new fancy things upstream has
+	// lets just do the original thing where we disable seccomp
+	if (unlikely(is_uid_manager(new_uid)))
+		goto install_ksu_fd;
 
-    return 0;
+	if (ksu_is_allow_uid_for_current(new_uid))
+		goto kill_seccomp;
+
+	// Handle kernel umount
+	ksu_handle_umount(new, old);
+	return;
+
+install_ksu_fd:
+	pr_info("install fd for manager: %d\n", new_uid);
+	ksu_install_fd();
+
+kill_seccomp:
+	disable_seccomp();
+	set_thread_flag(TIF_KSU_MANAGED); // sucompat fast-path
+	return;
 }
 
-void __init ksu_setuid_hook_init(void)
+#ifdef CONFIG_KSU_SUSFS
+/*
+ * Entry point for the SUSFS kernel/sys.c inline hook in __sys_setresuid().
+ * Upstream KernelSU distinguishes zygote/zygote_next children by their
+ * SELinux domain here, so the kernel does not need an LSM task_fix_setuid
+ * hook at all (the LSM variants skip it when SUSFS is enabled).
+ */
+extern u32 susfs_zygote_sid;
+extern u32 susfs_zygote_next_sid;
+extern int ksu_handle_umount_from_zygote(uid_t old_uid, uid_t new_uid);
+extern struct work_struct susfs_extra_works;
+
+static inline void ksu_handle_extra_susfs_work(void)
 {
-    ksu_kernel_umount_init();
-    ksu_mount_hide_init();
+	if (work_pending(&susfs_extra_works))
+		return;
+
+	schedule_work(&susfs_extra_works);
 }
 
-void __exit ksu_setuid_hook_exit(void)
+static int handle_zygote_setresuid(uid_t ruid)
 {
-    pr_info("ksu_core_exit\n");
-    ksu_kernel_umount_exit();
-    ksu_mount_hide_exit();
+	// Check if spawned process is isolated service first, and force to do umount if so
+	if (is_isolated_process(ruid)) {
+		susfs_set_current_proc_no_su();
+		susfs_set_current_proc_umounted();
+		goto do_umount;
+	}
+
+	// - Since ksu manager app uid is excluded in allow_list_arr, so ksu_uid_should_umount(manager_uid)
+	//   will always return true, that's why we need to explicitly check if new_uid belongs to
+	//   ksu manager.
+	// - Disable seccomp restriction for KSU manager since running with "su" will disable seccomp anyway
+	if (likely(ksu_is_manager_appid_valid()) && unlikely(is_uid_manager(ruid))) {
+		disable_seccomp();
+		pr_info("install fd for manager: %d\n", ruid);
+		ksu_install_fd();
+		return 0;
+	}
+
+	// - Check if spawned process is normal user app and needs to be umounted
+	// - Now app_profile for webview_zygote is available in KernelSU manager
+	if (likely(is_appuid(ruid) && ksu_uid_should_umount(ruid))) {
+		susfs_set_current_proc_no_su();
+		susfs_set_current_proc_umounted();
+		goto do_umount;
+	}
+
+	// Disable seccomp restriction for root allowed apps since running with "su" will disable seccomp anyway
+	if (ksu_is_allow_uid_for_current(ruid)) {
+		disable_seccomp();
+		return 0;
+	}
+
+	// Process not umounted but also root not allowed
+	susfs_set_current_proc_no_su();
+	return 0;
+
+do_umount:
+	// Handle kernel umount
+	ksu_handle_umount_from_zygote(current_uid().val, ruid);
+
+	// Handle extra susfs work
+	ksu_handle_extra_susfs_work();
+	return 0;
 }
+
+static int handle_zygote_next_setresuid(uid_t ruid)
+{
+	// Check if spawned process is isolated service first, and force to do umount if so
+	if (is_isolated_process(ruid)) {
+		susfs_set_current_proc_no_su();
+		susfs_set_current_proc_umounted();
+		susfs_set_current_proc_umounted_for_zygote_next();
+		goto do_susfs_work;
+	}
+
+	// - Since ksu manager app uid is excluded in allow_list_arr, so ksu_uid_should_umount(manager_uid)
+	//   will always return true, that's why we need to explicitly check if new_uid belongs to
+	//   ksu manager.
+	// - Disable seccomp restriction for KSU manager since running with "su" will disable seccomp anyway
+	if (likely(ksu_is_manager_appid_valid()) && unlikely(is_uid_manager(ruid))) {
+		disable_seccomp();
+		pr_info("install fd for manager: %d\n", ruid);
+		ksu_install_fd();
+		return 0;
+	}
+
+	// - Check if spawned process is normal user app and needs to be umounted
+	// - Now app_profile for webview_zygote is available in KernelSU manager
+	if (likely(is_appuid(ruid) && ksu_uid_should_umount(ruid))) {
+		susfs_set_current_proc_no_su();
+		susfs_set_current_proc_umounted();
+		susfs_set_current_proc_umounted_for_zygote_next();
+		goto do_susfs_work;
+	}
+
+	// Disable seccomp restriction for root allowed apps since running with "su" will disable seccomp anyway
+	if (ksu_is_allow_uid_for_current(ruid)) {
+		disable_seccomp();
+		return 0;
+	}
+
+	// Process not umounted but also root not allowed
+	susfs_set_current_proc_no_su();
+	return 0;
+
+do_susfs_work:
+	// Do not umount here as we are in init namespace now
+
+	// Handle extra susfs work
+	ksu_handle_extra_susfs_work();
+	return 0;
+}
+
+int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
+{
+	uid_t cur_uid = current_uid().val;
+
+	if (cur_uid != 0)
+		return 0;
+
+	// We only interest in process spawned by zygote or zygote_next
+	if (susfs_is_sid_equal(current_cred(), susfs_zygote_sid))
+		return handle_zygote_setresuid(ruid);
+
+	if (susfs_is_sid_equal(current_cred(), susfs_zygote_next_sid))
+		return handle_zygote_next_setresuid(ruid);
+
+	return 0;
+}
+#endif // CONFIG_KSU_SUSFS

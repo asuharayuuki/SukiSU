@@ -1,43 +1,51 @@
 #ifndef __KSU_H_PREINIT
 #define __KSU_H_PREINIT
 
-#include <linux/types.h>
-#include <asm/ptrace.h>
+/*
+ * The SUSFS variant stages the runner and rewrites the kernel-side struct
+ * filename in do_execveat_common(); struct filename only exists since 3.14,
+ * so preinit is compiled out below that. A kernel-side SUSFS port for
+ * 3.4 - 3.13 must not reference ksu_setup_preinit_file() or
+ * ksu_preinit_handle_post_execveat().
+ * The non-SUSFS variant additionally needs jump labels, as before.
+ */
+#if !defined(CONFIG_ARM64) || !defined(KSU_CAN_USE_JUMP_LABEL) || \
+	(defined(CONFIG_KSU_SUSFS) && LINUX_VERSION_CODE < KERNEL_VERSION(3, 14, 0))
+#define KSU_NO_PREINIT
+#endif
 
 #ifndef KSU_NO_PREINIT
+
 void ksu_preinit_init(void);
 void ksu_preinit_exit(void);
 
-// Swap the runner in for PID 1's "/system/bin/init selinux_setup" execve.
-// Returns true when it issued the syscall itself; the result is in *ret.
-bool ksu_preinit_handle_execve(const char __user **filename_user, const char __user *const __user *argv_user,
-                               int orig_nr, struct pt_regs *regs, long *ret);
+// NOTE: even if this has to be enabled by default, this has better codegen on execve.
+DEFINE_STATIC_KEY_FALSE(ksu_preinit_key);
 
-// Drop the staged runner if selinux_setup was never seen.
-void ksu_preinit_release(void);
+static inline void ksu_preinit_execve(void **filename_kernel, const char __user **filename_user, void *u_argv, void *u_envp);
 
-// Whether the runner is built in and not disabled with preinit=0.
-bool ksu_preinit_enabled_param(void);
+static int ksu_disable_preinit_branch(void *data)
+{
+	static bool disabled = false;
+	if (disabled)
+		return 0;
+
+	pr_info("preinit: remove preinit execve branches\n");
+	static_branch_disable(&ksu_preinit_key);
+	kick_all_cpus_sync();
+
+	disabled = true;
+	return 0;
+}
 #else
-static inline void ksu_preinit_init(void)
-{
-}
-static inline void ksu_preinit_exit(void)
-{
-}
-static inline bool ksu_preinit_handle_execve(const char __user **filename_user,
-                                             const char __user *const __user *argv_user, int orig_nr,
-                                             struct pt_regs *regs, long *ret)
-{
-    return false;
-}
-static inline void ksu_preinit_release(void)
-{
-}
-static inline bool ksu_preinit_enabled_param(void)
-{
-    return false;
-}
-#endif
+
+#define ksu_preinit_init() do { } while (0)
+#define ksu_preinit_exit() do { } while (0)
+
+#define ksu_preinit_execve(...)	do { } while (0)
+
+static int ksu_disable_preinit_branch(void *data) { return 0; }
+
+#endif // KSU_NO_PREINIT
 
 #endif // __KSU_H_PREINIT

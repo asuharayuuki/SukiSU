@@ -1,46 +1,40 @@
-
-#include <linux/string.h>
-
-#include "uts_spoof.h"
-#include "infra/symbol_resolver.h"
-#include "klog.h"
-
 static void do_spoof_version(struct rw_semaphore *sem, struct uts_namespace *ns,
                              const char *release, const char *version)
 {
-    if (sem) {
-        down_write(sem);
-    } else {
-        down_write(&uts_sem);
+#ifndef MODULE
+    /*
+     * Built-in (all 3.4 .. 5.4 builds): init_uts_ns and uts_sem are linked
+     * in, so the direct references are safe even when kallsyms could not
+     * resolve them (KALLSYMS_ALL off hides data symbols from kallsyms).
+     */
+    if (!ns)
+        ns = &init_uts_ns;
+    if (!sem)
+        sem = &uts_sem;
+#else
+    /*
+     * Module: uts_sem is not exported on any supported kernel, and a
+     * relocation against it would make the module unloadable. Only
+     * proceed when the lookup resolved both; LKM requires KALLSYMS_ALL,
+     * so the data symbols are available there.
+     */
+    if (unlikely(!sem || !ns))
+        return;
+#endif
+
+    down_write(sem);
+
+    if (release && release[0] != '\0') {
+        strscpy(ns->name.release, release, sizeof(ns->name.release));
+    }
+    if (version && version[0] != '\0') {
+        strscpy(ns->name.version, version, sizeof(ns->name.version));
     }
 
-    if (ns) {
-        if (release && release[0] != '\0') {
-            strscpy(ns->name.release, release, sizeof(ns->name.release));
-        }
-        if (version && version[0] != '\0') {
-            strscpy(ns->name.version, version, sizeof(ns->name.version));
-        }
-    } else {
-        if (release && release[0] != '\0') {
-            strscpy(init_uts_ns.name.release, release, sizeof(init_uts_ns.name.release));
-        }
-        if (version && version[0] != '\0') {
-            strscpy(init_uts_ns.name.version, version, sizeof(init_uts_ns.name.version));
-        }
-    }
+    up_write(sem);
 
-    if (sem) {
-        up_write(sem);
-    } else {
-        up_write(&uts_sem);
-    }
-
-    if (ns) {
-        pr_info("ksu: spoofed version: %s, release: %s\n", ns->name.version, ns->name.release);
-    } else {
-        pr_info("ksu: spoofed version: %s, release: %s\n", init_uts_ns.name.version, init_uts_ns.name.release);
-    }
+    pr_info("ksu: spoofed version: %s, release: %s\n",
+            ns->name.version, ns->name.release);
 }
 
 void ksu_spoof_version(const char *spoof_release, const char *spoof_version)
