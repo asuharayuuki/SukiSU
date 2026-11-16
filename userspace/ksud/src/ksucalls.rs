@@ -47,7 +47,10 @@ extern "C" fn sigsys_handler(
             SIGSYS_OCCURRED.with(|occurred| occurred.set(true));
         }
 
-        #[cfg(not(target_arch = "riscv64"))]
+        // Only the architectures that actually rewrite the return value below.
+        // armv7 has no case here yet, so binding it there was an unused variable
+        // and clippy -Dwarnings failed the build.
+        #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
         let ucontext = ctx.cast::<libc::ucontext_t>();
         #[cfg(target_arch = "aarch64")]
         {
