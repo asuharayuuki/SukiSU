@@ -11,6 +11,7 @@
 #include <asm/ptrace.h>
 #endif
 #include "kpm.h"
+#include "compact.h"
 #include "bridge.h"
 
 #define KPM_NAME_LEN 32
@@ -178,15 +179,11 @@ int do_kpm(void __user *arg)
     int result;
     /* Called only through the manager_or_root-authorized extension ioctl. */
     if (copy_from_user(&cmd, arg, sizeof(cmd))) return -EFAULT;
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0)
-    if (!access_ok(VERIFY_WRITE, u64_to_user_ptr(cmd.result_code), sizeof(result)))
-        return -EFAULT;
-#else
-    if (!access_ok(u64_to_user_ptr(cmd.result_code), sizeof(result)))
-        return -EFAULT;
-#endif
-
+    if (!access_ok(u64_to_user_ptr(cmd.result_code), sizeof(result))) return -EFAULT;
     result = handle_kpm(&cmd);
     return copy_to_user(u64_to_user_ptr(cmd.result_code), &result, sizeof(result)) ? -EFAULT : 0;
 }
+
+/* The top-level extension.c registers the KPM extension handler; this
+ * file only implements the underlying KPM control surface. */
+

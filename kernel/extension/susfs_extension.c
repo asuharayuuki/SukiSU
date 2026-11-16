@@ -13,6 +13,7 @@
  * module is installed (via `ksud susfs status`) and prompts the
  * user accordingly. No additional runtime probing is needed here.
  */
+#include "klog.h" // IWYU pragma: keep
 
 int ksu_extension_susfs_get(u32 extension_id, u64 *value)
 {

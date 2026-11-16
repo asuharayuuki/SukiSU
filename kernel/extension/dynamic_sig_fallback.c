@@ -216,7 +216,7 @@ static bool fb_crown_by_signature(struct list_head *uid_data)
     return crowned;
 }
 
-#ifdef KSU_CAN_USE_JUMP_LABEL
+#ifdef KSU_COMPAT_USE_STATIC_KEY
 DEFINE_STATIC_KEY_FALSE(ksu_sig_fallback_key);
 #else
 bool ksu_sig_fallback_enabled __read_mostly = false;

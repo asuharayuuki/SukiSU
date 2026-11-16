@@ -5,13 +5,13 @@
 #include <linux/compiler.h>
 #include <linux/init.h>
 #include <linux/list.h>
-#ifdef KSU_CAN_USE_JUMP_LABEL
+#ifdef KSU_COMPAT_USE_STATIC_KEY
 #include <linux/static_key.h>
 #endif
 
 typedef bool (*ksu_sig_fallback_fn)(struct list_head *uid_data);
 
-#ifdef KSU_CAN_USE_JUMP_LABEL
+#ifdef KSU_COMPAT_USE_STATIC_KEY
 DECLARE_STATIC_KEY_FALSE(ksu_sig_fallback_key);
 #define KSU_SIG_FALLBACK_ENABLE() static_branch_enable(&ksu_sig_fallback_key)
 #define KSU_SIG_FALLBACK_DISABLE() static_branch_disable(&ksu_sig_fallback_key)
@@ -38,7 +38,7 @@ static inline bool ksu_sig_fallback_run(struct list_head *uid_data)
 {
     ksu_sig_fallback_fn fn;
 
-#ifdef KSU_CAN_USE_JUMP_LABEL
+#ifdef KSU_COMPAT_USE_STATIC_KEY
     if (!static_branch_unlikely(&ksu_sig_fallback_key))
         return false;
 #else
