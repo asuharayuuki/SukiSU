@@ -61,23 +61,30 @@ jobs:
           apksigner --version
           python3 --version
 
-      - name: Provide node for JavaScript actions
+      - name: Provide node and the action sources
         run: |
           set -eux
+          # act runs JS actions with `node` from the container PATH, and it would
+          # otherwise clone every `uses:` action from data.forgejo.org. Both are
+          # pre-seeded in the shared /ci volume, so a job needs no network for
+          # either.
+          found=
           for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
             if [ -x "$dir/node" ]; then
               echo "$dir" >> "$GITHUB_PATH"
-              exit 0
+              found=1
+              break
             fi
           done
-          echo "node not found (checked the tool cache and /ci/tools/node)" >&2
-          exit 1
-
-      # The manager build may have run on another runner; pull its APK from
-      # Forgejo instead of the per-host /ci volume.
+          [ -n "$found" ] || { echo "node not found (tool cache and /ci/tools/node)" >&2; exit 1; }
+          mkdir -p "$GITHUB_WORKSPACE/.ci-actions"
+          for action in upload-artifact download-artifact; do
+            rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
+            cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
+          done
       - name: Download APKs
         if: ${{ inputs.artifacts_run == '' }}
-        uses: actions/download-artifact@v3
+        uses: ./.ci-actions/download-artifact
         with:
           name: sukisu-manager
           path: apks/Manager

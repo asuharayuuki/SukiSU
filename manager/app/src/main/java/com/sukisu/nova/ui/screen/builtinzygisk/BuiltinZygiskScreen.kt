@@ -2,11 +2,9 @@ package com.sukisu.nova.ui.screen.builtinzygisk
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -130,17 +128,21 @@ private fun SwitchRestartDialog(
             title = { Text(title) },
             text = { Text(message) },
             confirmButton = {
-                Row {
+                Column(modifier = Modifier.fillMaxWidth()) {
                     choices.forEach { choice ->
-                        TextButton(onClick = { onReboot(choice.reason) }) {
+                        TextButton(
+                            onClick = { onReboot(choice.reason) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Text(stringResource(choice.labelRes))
                         }
                     }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = onClose) {
-                    Text(stringResource(R.string.close))
+                    TextButton(
+                        onClick = onClose,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.close))
+                    }
                 }
             }
         )
@@ -166,25 +168,24 @@ private fun SwitchRestartDialog(
                     textAlign = TextAlign.Center,
                     color = miuixColorScheme.onSurfaceVariantSummary
                 )
-                Row(
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 24.dp)
                 ) {
-                    MiuixTextButton(
-                        text = stringResource(R.string.close),
-                        onClick = onClose,
-                        modifier = Modifier.weight(1f)
-                    )
                     choices.forEach { choice ->
-                        Spacer(Modifier.width(20.dp))
                         MiuixTextButton(
                             text = stringResource(choice.labelRes),
                             onClick = { onReboot(choice.reason) },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
+                    MiuixTextButton(
+                        text = stringResource(R.string.close),
+                        onClick = onClose,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         )

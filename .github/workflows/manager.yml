@@ -97,6 +97,28 @@ jobs:
           git clone -q --shared --no-checkout "$mirror" .
           git checkout -q "${GITHUB_SHA}"
 
+      - name: Provide node and the action sources
+        run: |
+          set -eux
+          # act runs JS actions with `node` from the container PATH, and it would
+          # otherwise clone every `uses:` action from data.forgejo.org. Both are
+          # pre-seeded in the shared /ci volume, so a job needs no network for
+          # either.
+          found=
+          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
+            if [ -x "$dir/node" ]; then
+              echo "$dir" >> "$GITHUB_PATH"
+              found=1
+              break
+            fi
+          done
+          [ -n "$found" ] || { echo "node not found (tool cache and /ci/tools/node)" >&2; exit 1; }
+          mkdir -p "$GITHUB_WORKSPACE/.ci-actions"
+          for action in upload-artifact download-artifact; do
+            rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
+            cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
+          done
+
       - name: Set artifact name
         id: determine
         run: echo "title=Manager" >> "$GITHUB_OUTPUT"
@@ -152,18 +174,23 @@ jobs:
           apksigner --version
           python3 --version
 
+      # The ksud build may have run on the other runner, so the binaries come
+      # from Forgejo instead of the local /ci volume.
       - name: Download ksud artifacts
+        if: ${{ inputs.artifacts_run == '' }}
+        uses: ./.ci-actions/download-artifact
+        with:
+          path: artifacts
+
+      - name: Download ksud artifacts from another run
+        if: ${{ inputs.artifacts_run != '' }}
         env:
           ARTIFACTS_RUN: ${{ inputs.artifacts_run }}
         run: |
           set -eux
           . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
-          # Rebuild-only runs take the native artifacts from an earlier run.
-          if [ -n "$ARTIFACTS_RUN" ]; then
-            # This run has not written anything yet, so its root does not exist.
-            mkdir -p "${CI_ARTIFACT_ROOT}"
-            cp -a "/ci/runs/${ARTIFACTS_RUN}"/* "${CI_ARTIFACT_ROOT}/"
-          fi
+          mkdir -p "${CI_ARTIFACT_ROOT}"
+          cp -a "/ci/runs/${ARTIFACTS_RUN}"/* "${CI_ARTIFACT_ROOT}/"
           mkdir -p "${GITHUB_WORKSPACE}/artifacts"
           for t in aarch64-linux-android armv7-linux-androideabi x86_64-linux-android; do
             ci_artifact_get "ksud-${t}" "${GITHUB_WORKSPACE}/artifacts/ksud-${t}"
@@ -299,19 +326,7 @@ jobs:
 
       # Repack runs on whichever runner is free, so the APK goes through
       # Forgejo instead of the per-host /ci volume.
-      - name: Provide node for JavaScript actions
-        run: |
-          set -eux
-          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
-            if [ -x "$dir/node" ]; then
-              echo "$dir" >> "$GITHUB_PATH"
-              exit 0
-            fi
-          done
-          echo "node not found (checked the tool cache and /ci/tools/node)" >&2
-          exit 1
-
-      - uses: actions/upload-artifact@v3
+      - uses: ./.ci-actions/upload-artifact
         with:
           name: ${{ steps.determine.outputs.title }}-gradle
           path: manager/app/build/outputs/apk/release/*.apk
@@ -385,23 +400,30 @@ jobs:
           apksigner --version
           python3 --version
 
-      - name: Provide node for JavaScript actions
+      - name: Provide node and the action sources
         run: |
           set -eux
+          # act runs JS actions with `node` from the container PATH, and it would
+          # otherwise clone every `uses:` action from data.forgejo.org. Both are
+          # pre-seeded in the shared /ci volume, so a job needs no network for
+          # either.
+          found=
           for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
             if [ -x "$dir/node" ]; then
               echo "$dir" >> "$GITHUB_PATH"
-              exit 0
+              found=1
+              break
             fi
           done
-          echo "node not found (checked the tool cache and /ci/tools/node)" >&2
-          exit 1
-
-      # This run's artifacts come from Forgejo, so the repack job does not have
-      # to land on the same runner as the Gradle build.
+          [ -n "$found" ] || { echo "node not found (tool cache and /ci/tools/node)" >&2; exit 1; }
+          mkdir -p "$GITHUB_WORKSPACE/.ci-actions"
+          for action in upload-artifact download-artifact; do
+            rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
+            cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
+          done
       - name: Download artifacts
         if: ${{ inputs.artifacts_run == '' }}
-        uses: actions/download-artifact@v3
+        uses: ./.ci-actions/download-artifact
         with:
           path: artifacts
 
@@ -554,7 +576,7 @@ jobs:
           ci_artifact_put "${{ steps.determine.outputs.title }}" \
             dist/*.apk
 
-      - uses: actions/upload-artifact@v3
+      - uses: ./.ci-actions/upload-artifact
         with:
           name: sukisu-manager
           path: dist/*.apk

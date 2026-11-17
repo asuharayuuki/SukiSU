@@ -77,20 +77,29 @@ jobs:
 
       # Jobs may land on different runners, so artifacts are passed through
       # Forgejo instead of the per-host /ci volume.
-      - name: Provide node for JavaScript actions
+      - name: Provide node and the action sources
         run: |
           set -eux
+          # act runs JS actions with `node` from the container PATH, and it would
+          # otherwise clone every `uses:` action from data.forgejo.org. Both are
+          # pre-seeded in the shared /ci volume, so a job needs no network for
+          # either.
+          found=
           for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
             if [ -x "$dir/node" ]; then
               echo "$dir" >> "$GITHUB_PATH"
-              exit 0
+              found=1
+              break
             fi
           done
-          echo "node not found (checked the tool cache and /ci/tools/node)" >&2
-          exit 1
-
+          [ -n "$found" ] || { echo "node not found (tool cache and /ci/tools/node)" >&2; exit 1; }
+          mkdir -p "$GITHUB_WORKSPACE/.ci-actions"
+          for action in upload-artifact download-artifact; do
+            rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
+            cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
+          done
       - name: Download artifacts
-        uses: actions/download-artifact@v3
+        uses: ./.ci-actions/download-artifact
         with:
           # No name: every artifact of the run, each in artifacts/<name>/.
           path: artifacts
@@ -169,7 +178,7 @@ jobs:
           ci_artifact_put "ksud-${{ matrix.target }}" \
             "target/${{ matrix.target }}/release/ksud"
 
-      - uses: actions/upload-artifact@v3
+      - uses: ./.ci-actions/upload-artifact
         with:
           name: ksud-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/ksud

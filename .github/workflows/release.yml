@@ -122,21 +122,28 @@ jobs:
           git clone -q --shared --no-checkout "$mirror" .
           git checkout -q "${GITHUB_SHA}"
 
-      - name: Provide node for JavaScript actions
+      - name: Provide node and the action sources
         run: |
           set -eux
+          # act runs JS actions with `node` from the container PATH, and it would
+          # otherwise clone every `uses:` action from data.forgejo.org. Both are
+          # pre-seeded in the shared /ci volume, so a job needs no network for
+          # either.
+          found=
           for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
             if [ -x "$dir/node" ]; then
               echo "$dir" >> "$GITHUB_PATH"
-              exit 0
+              found=1
+              break
             fi
           done
-          echo "node not found (checked the tool cache and /ci/tools/node)" >&2
-          exit 1
-
-      # Jobs may run on different runners, so the inputs come from Forgejo
-      # instead of the per-host /ci volume.
-      - uses: actions/download-artifact@v3
+          [ -n "$found" ] || { echo "node not found (tool cache and /ci/tools/node)" >&2; exit 1; }
+          mkdir -p "$GITHUB_WORKSPACE/.ci-actions"
+          for action in upload-artifact download-artifact; do
+            rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
+            cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
+          done
+      - uses: ./.ci-actions/download-artifact
         with:
           path: artifacts
 
@@ -181,7 +188,7 @@ jobs:
           test -n "$(ls -A "$out")"
           echo "release files collected in ${out}"
 
-      - uses: actions/upload-artifact@v3
+      - uses: ./.ci-actions/upload-artifact
         with:
           name: release
           path: release/
@@ -196,19 +203,28 @@ jobs:
     steps:
       # assemble may have run on another runner, so its output comes from
       # Forgejo rather than the local /ci volume.
-      - name: Provide node for JavaScript actions
+      - name: Provide node and the action sources
         run: |
           set -eux
+          # act runs JS actions with `node` from the container PATH, and it would
+          # otherwise clone every `uses:` action from data.forgejo.org. Both are
+          # pre-seeded in the shared /ci volume, so a job needs no network for
+          # either.
+          found=
           for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
             if [ -x "$dir/node" ]; then
               echo "$dir" >> "$GITHUB_PATH"
-              exit 0
+              found=1
+              break
             fi
           done
-          echo "node not found (checked the tool cache and /ci/tools/node)" >&2
-          exit 1
-
-      - uses: actions/download-artifact@v3
+          [ -n "$found" ] || { echo "node not found (tool cache and /ci/tools/node)" >&2; exit 1; }
+          mkdir -p "$GITHUB_WORKSPACE/.ci-actions"
+          for action in upload-artifact download-artifact; do
+            rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
+            cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
+          done
+      - uses: ./.ci-actions/download-artifact
         if: github.ref_type == 'tag'
         with:
           name: release
@@ -309,28 +325,33 @@ jobs:
 
       # GitHub-style artifact: Forgejo stores it server-side and lists it on the
       # run page. Everything the jobs wrote lives in /ci/runs/<run>.
-      - name: Provide node for JavaScript actions
+      - name: Provide node and the action sources
         run: |
           set -eux
-          # Images without node (the DDK one) fall back to the copy kept in the
-          # shared /ci volume, which every job container mounts.
+          # act runs JS actions with `node` from the container PATH, and it would
+          # otherwise clone every `uses:` action from data.forgejo.org. Both are
+          # pre-seeded in the shared /ci volume, so a job needs no network for
+          # either.
+          found=
           for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
             if [ -x "$dir/node" ]; then
               echo "$dir" >> "$GITHUB_PATH"
-              exit 0
+              found=1
+              break
             fi
           done
-          echo "node not found (checked the tool cache and /ci/tools/node)" >&2
-          exit 1
-
-      # The jobs may have run on different runners, so the bundle is built from
-      # the artifacts Forgejo stored rather than from the local /ci volume.
+          [ -n "$found" ] || { echo "node not found (tool cache and /ci/tools/node)" >&2; exit 1; }
+          mkdir -p "$GITHUB_WORKSPACE/.ci-actions"
+          for action in upload-artifact download-artifact; do
+            rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
+            cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
+          done
       - name: Download the run artifacts
-        uses: actions/download-artifact@v3
+        uses: ./.ci-actions/download-artifact
         with:
           path: artifacts
 
-      - uses: actions/upload-artifact@v3
+      - uses: ./.ci-actions/upload-artifact
         with:
           name: sukisu-release
           path: artifacts/
