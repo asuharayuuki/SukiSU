@@ -61,13 +61,37 @@ jobs:
           apksigner --version
           python3 --version
 
+      - name: Provide node for JavaScript actions
+        run: |
+          set -eux
+          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
+            if [ -x "$dir/node" ]; then
+              echo "$dir" >> "$GITHUB_PATH"
+              exit 0
+            fi
+          done
+          echo "node not found (checked the tool cache and /ci/tools/node)" >&2
+          exit 1
+
+      # The manager build may have run on another runner; pull its APK from
+      # Forgejo instead of the per-host /ci volume.
       - name: Download APKs
+        if: ${{ inputs.artifacts_run == '' }}
+        uses: actions/download-artifact@v3
+        with:
+          name: sukisu-manager
+          path: apks/Manager
+
+      # Explicit artifacts_run (manual dispatch) still reads /ci, because
+      # Forgejo cannot serve artifacts across runs yet.
+      - name: Download APKs from another run
+        if: ${{ inputs.artifacts_run != '' }}
         env:
           ARTIFACTS_RUN: ${{ inputs.artifacts_run }}
         run: |
           set -eux
           . .github/scripts/ci/common.sh
-          if [ -n "$ARTIFACTS_RUN" ] && [ ! -d "${CI_ARTIFACT_ROOT}/Manager" ]; then
+          if [ ! -d "${CI_ARTIFACT_ROOT}/Manager" ]; then
             # This run has not written anything yet, so its root does not exist.
             mkdir -p "${CI_ARTIFACT_ROOT}"
             cp -a "/ci/runs/${ARTIFACTS_RUN}"/* "${CI_ARTIFACT_ROOT}/"

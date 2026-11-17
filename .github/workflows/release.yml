@@ -70,9 +70,11 @@ jobs:
 
   build-ksuinit:
     uses: ./.github/workflows/ksuinit.yml
+    secrets: inherit
 
   build-builtzygisk:
     uses: ./.github/workflows/builtzygisk.yml
+    secrets: inherit
 
   build-ksud:
     needs: [build-lkm, build-ksuinit, build-builtzygisk]
@@ -81,6 +83,7 @@ jobs:
       pack_lkm: true
       pack_ksuinit: true
       pack_builtzygisk: true
+    secrets: inherit
 
   manager:
     needs: build-ksud
@@ -119,37 +122,32 @@ jobs:
           git clone -q --shared --no-checkout "$mirror" .
           git checkout -q "${GITHUB_SHA}"
 
-      - name: Collect release files
+      - name: Provide node for JavaScript actions
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
-          mkdir -p artifacts
-          for name in Manager \
-                      ksud-aarch64-linux-android ksud-armv7-linux-androideabi \
-                      ksud-x86_64-linux-android ksud-riscv64-linux-android \
-                      ksuinit-aarch64 ksuinit-arm ksuinit-x86_64 ksuinit-riscv64; do
-            if ci_artifact_exists "$name"; then
-              ci_artifact_get "$name" "artifacts/$name"
+          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
+            if [ -x "$dir/node" ]; then
+              echo "$dir" >> "$GITHUB_PATH"
+              exit 0
             fi
           done
-          # The LKM artifacts are named per KMI, so pick them up by pattern.
-          for dir in "$CI_ARTIFACT_ROOT"/*-android*-lkm; do
-            [ -d "$dir" ] || continue
-            name="$(basename "$dir")"
-            ci_artifact_get "$name" "artifacts/$name"
-          done
-          # The zygisk payload is what ksud embeds; publishing it as well makes the
-          # release self-explanatory instead of relying on a binary inspection.
-          for arch in aarch64 arm x86_64 riscv64; do
-            if ci_artifact_exists "builtzygisk-$arch"; then
-              ci_artifact_get "builtzygisk-$arch" "artifacts/builtzygisk-$arch"
-            fi
-          done
+          echo "node not found (checked the tool cache and /ci/tools/node)" >&2
+          exit 1
 
-          out="${CI_ARTIFACT_ROOT}/release"
+      # Jobs may run on different runners, so the inputs come from Forgejo
+      # instead of the per-host /ci volume.
+      - uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Pack the release files
+        run: |
+          set -eux
+          out="$GITHUB_WORKSPACE/release"
+          rm -rf "$out"
           mkdir -p "$out" "$out/lkm" "$out/ksud" "$out/ksuinit"
 
-          cp -f artifacts/Manager/*.apk "$out"/ 2>/dev/null || true
+          cp -f artifacts/sukisu-manager/*.apk "$out"/ 2>/dev/null || true
 
           for d in artifacts/*-android*-lkm; do
             [ -d "$d" ] || continue
@@ -172,7 +170,6 @@ jobs:
           for d in artifacts/builtzygisk-*; do
             [ -d "$d" ] || continue
             arch="${d##*builtzygisk-}"
-            # an older builder nested the files under an arch directory
             [ -d "$d/$arch" ] && d="$d/$arch"
             for f in "$d"/*; do
               [ -f "$f" ] || continue
@@ -184,6 +181,12 @@ jobs:
           test -n "$(ls -A "$out")"
           echo "release files collected in ${out}"
 
+      - uses: actions/upload-artifact@v3
+        with:
+          name: release
+          path: release/
+          if-no-files-found: error
+
   # A tag push publishes a real release with every artifact attached: the kernel
   # modules, ksud, ksuinit and the manager APK. Without this the release only
   # existed on the runner host.
@@ -191,6 +194,26 @@ jobs:
     needs: [assemble]
     runs-on: ubuntu-latest
     steps:
+      # assemble may have run on another runner, so its output comes from
+      # Forgejo rather than the local /ci volume.
+      - name: Provide node for JavaScript actions
+        run: |
+          set -eux
+          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
+            if [ -x "$dir/node" ]; then
+              echo "$dir" >> "$GITHUB_PATH"
+              exit 0
+            fi
+          done
+          echo "node not found (checked the tool cache and /ci/tools/node)" >&2
+          exit 1
+
+      - uses: actions/download-artifact@v3
+        if: github.ref_type == 'tag'
+        with:
+          name: release
+          path: release
+
       - name: Upload the release assets
         if: github.ref_type == 'tag'
         env:
@@ -199,13 +222,13 @@ jobs:
           API_TOKEN: ${{ secrets.RELEASE_API_TOKEN || vars.RELEASE_API_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           set -eu
-          # This job has no checkout: it only reads the files the assemble job
-          # wrote, so common.sh is not available and not needed here.
+          # No checkout here: the assets come from the `release` artifact that
+          # assemble published, so common.sh is not available and not needed.
           site="${FORGEJO_PUBLIC_URL:-https://git.zako.shirkneko.top:20004}"
           api="${site}/api/v1/repos/${GITHUB_REPOSITORY}"
           auth="Authorization: token ${API_TOKEN}"
           tag="${GITHUB_REF_NAME}"
-          dir="/ci/runs/${GITHUB_RUN_ID}/release"
+          dir="${GITHUB_WORKSPACE}/release"
           test -d "$dir"
           echo "publishing ${tag} from ${dir}"
 
@@ -283,3 +306,32 @@ jobs:
           echo "archived to ${dest}"
           du -sh "$dest"
           echo "kept: $(ls -1t /out | tr '\n' ' ')"
+
+      # GitHub-style artifact: Forgejo stores it server-side and lists it on the
+      # run page. Everything the jobs wrote lives in /ci/runs/<run>.
+      - name: Provide node for JavaScript actions
+        run: |
+          set -eux
+          # Images without node (the DDK one) fall back to the copy kept in the
+          # shared /ci volume, which every job container mounts.
+          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
+            if [ -x "$dir/node" ]; then
+              echo "$dir" >> "$GITHUB_PATH"
+              exit 0
+            fi
+          done
+          echo "node not found (checked the tool cache and /ci/tools/node)" >&2
+          exit 1
+
+      # The jobs may have run on different runners, so the bundle is built from
+      # the artifacts Forgejo stored rather than from the local /ci volume.
+      - name: Download the run artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: sukisu-release
+          path: artifacts/
+          if-no-files-found: error

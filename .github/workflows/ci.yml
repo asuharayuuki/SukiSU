@@ -171,9 +171,11 @@ jobs:
 
   build-ksuinit:
     uses: ./.github/workflows/ksuinit.yml
+    secrets: inherit
 
   build-builtzygisk:
     uses: ./.github/workflows/builtzygisk.yml
+    secrets: inherit
 
   build-ksud:
     needs: [build-lkm, build-ksuinit, build-builtzygisk]
@@ -182,6 +184,7 @@ jobs:
       pack_lkm: true
       pack_ksuinit: true
       pack_builtzygisk: true
+    secrets: inherit
 
   manager:
     needs: [generate-key, build-ksud]
@@ -234,3 +237,32 @@ jobs:
           echo "archived to ${dest}"
           du -sh "$dest"
           echo "kept: $(ls -1t /out | tr '\n' ' ')"
+
+      # GitHub-style artifact: Forgejo stores it server-side and lists it on the
+      # run page. Everything the jobs wrote lives in /ci/runs/<run>.
+      - name: Provide node for JavaScript actions
+        run: |
+          set -eux
+          # Images without node (the DDK one) fall back to the copy kept in the
+          # shared /ci volume, which every job container mounts.
+          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
+            if [ -x "$dir/node" ]; then
+              echo "$dir" >> "$GITHUB_PATH"
+              exit 0
+            fi
+          done
+          echo "node not found (checked the tool cache and /ci/tools/node)" >&2
+          exit 1
+
+      # The jobs may have run on different runners, so the bundle is built from
+      # the artifacts Forgejo stored rather than from the local /ci volume.
+      - name: Download the run artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: sukisu-ci
+          path: artifacts/
+          if-no-files-found: error

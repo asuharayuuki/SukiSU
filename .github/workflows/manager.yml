@@ -297,12 +297,25 @@ jobs:
       # Upload un-repacked APK
       # --------------------------------------------------------
 
-      - name: Upload Gradle APK
+      # Repack runs on whichever runner is free, so the APK goes through
+      # Forgejo instead of the per-host /ci volume.
+      - name: Provide node for JavaScript actions
         run: |
           set -eux
-          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
-          ci_artifact_put "${{ steps.determine.outputs.title }}-gradle" \
-            "${GITHUB_WORKSPACE}/manager/app/build/outputs/apk/release/"*.apk
+          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
+            if [ -x "$dir/node" ]; then
+              echo "$dir" >> "$GITHUB_PATH"
+              exit 0
+            fi
+          done
+          echo "node not found (checked the tool cache and /ci/tools/node)" >&2
+          exit 1
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.determine.outputs.title }}-gradle
+          path: manager/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
 
       # --------------------------------------------------------
       # Upload mappings
@@ -372,19 +385,47 @@ jobs:
           apksigner --version
           python3 --version
 
+      - name: Provide node for JavaScript actions
+        run: |
+          set -eux
+          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
+            if [ -x "$dir/node" ]; then
+              echo "$dir" >> "$GITHUB_PATH"
+              exit 0
+            fi
+          done
+          echo "node not found (checked the tool cache and /ci/tools/node)" >&2
+          exit 1
+
+      # This run's artifacts come from Forgejo, so the repack job does not have
+      # to land on the same runner as the Gradle build.
       - name: Download artifacts
+        if: ${{ inputs.artifacts_run == '' }}
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      # Explicit artifacts_run (manual dispatch) still reads the /ci volume,
+      # because Forgejo cannot serve artifacts across runs yet.
+      - name: Download artifacts from another run
+        if: ${{ inputs.artifacts_run != '' }}
         env:
           ARTIFACTS_RUN: ${{ inputs.artifacts_run }}
         run: |
           set -eux
           . .github/scripts/ci/common.sh
-          if [ -n "$ARTIFACTS_RUN" ] && [ ! -d "${CI_ARTIFACT_ROOT}/${{ steps.determine.outputs.title }}-gradle" ]; then
-            cp -a "/ci/runs/${ARTIFACTS_RUN}"/* "${CI_ARTIFACT_ROOT}/"
-          fi
+          cp -a "/ci/runs/${ARTIFACTS_RUN}"/* "${CI_ARTIFACT_ROOT}/"
           ci_artifact_get "${{ steps.determine.outputs.title }}-gradle" artifacts/manager-gradle
           for t in aarch64-linux-android armv7-linux-androideabi x86_64-linux-android riscv64-linux-android; do
             ci_artifact_get "ksud-${t}" "artifacts/ksud-${t}"
           done
+
+      - name: Normalise the artifact layout
+        if: ${{ inputs.artifacts_run == '' }}
+        run: |
+          set -eux
+          mv "artifacts/${{ steps.determine.outputs.title }}-gradle" artifacts/manager-gradle
+          ls -la artifacts artifacts/manager-gradle
 
       # --------------------------------------------------------
       # Place Manager APK and ksud artifacts
@@ -512,3 +553,9 @@ jobs:
           . .github/scripts/ci/common.sh
           ci_artifact_put "${{ steps.determine.outputs.title }}" \
             dist/*.apk
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: sukisu-manager
+          path: dist/*.apk
+          if-no-files-found: error

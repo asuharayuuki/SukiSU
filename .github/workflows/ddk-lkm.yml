@@ -231,6 +231,45 @@ jobs:
           ci_artifact_put "x86_64-${KMI}-lkm" \
             "${GITHUB_WORKSPACE}/out/x86_64/${KMI}_kernelsu.ko"
 
+      # GitHub-style artifact: Forgejo stores it server-side and lists it on the
+      # run page. The DDK image has no node, so it uses the copy in /ci/tools.
+      - name: Provide node for JavaScript actions
+        run: |
+          set -eux
+          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
+            if [ -x "$dir/node" ]; then
+              echo "$dir" >> "$GITHUB_PATH"
+              exit 0
+            fi
+          done
+          echo "node not found (checked the tool cache and /ci/tools/node)" >&2
+          exit 1
+
+      - name: Collect the kernel modules
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          rm -rf "$GITHUB_WORKSPACE/upload"
+          mkdir -p "$GITHUB_WORKSPACE/upload"
+          cp -a "$(ci_artifact_path "aarch64-${KMI}-lkm")" \
+                "$GITHUB_WORKSPACE/upload/aarch64-${KMI}-lkm"
+          cp -a "$(ci_artifact_path "x86_64-${KMI}-lkm")" \
+                "$GITHUB_WORKSPACE/upload/x86_64-${KMI}-lkm"
+
+      # Per-architecture artifact names match the directory names the consumer
+      # jobs expect, so `download-artifact` recreates the same layout.
+      - uses: actions/upload-artifact@v3
+        with:
+          name: aarch64-${{ inputs.kmi }}-lkm
+          path: upload/aarch64-${{ inputs.kmi }}-lkm
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: x86_64-${{ inputs.kmi }}-lkm
+          path: upload/x86_64-${{ inputs.kmi }}-lkm
+          if-no-files-found: error
+
       - name: Release the parallelism slot
         if: always()
         run: |

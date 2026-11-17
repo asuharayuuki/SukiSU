@@ -75,17 +75,25 @@ jobs:
           git clone -q --shared --no-checkout "$mirror" .
           git checkout -q "${GITHUB_SHA}"
 
-      - name: Download artifacts
+      # Jobs may land on different runners, so artifacts are passed through
+      # Forgejo instead of the per-host /ci volume.
+      - name: Provide node for JavaScript actions
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
-          mkdir -p artifacts
-          # Every pack_* input below reads from ./artifacts, so mirror the whole
-          # per-run artifact root here and let the individual steps pick.
-          if [ -d "$CI_ARTIFACT_ROOT" ]; then
-            cp -a "$CI_ARTIFACT_ROOT"/. artifacts/
-          fi
-          ls -la artifacts || true
+          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
+            if [ -x "$dir/node" ]; then
+              echo "$dir" >> "$GITHUB_PATH"
+              exit 0
+            fi
+          done
+          echo "node not found (checked the tool cache and /ci/tools/node)" >&2
+          exit 1
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          # No name: every artifact of the run, each in artifacts/<name>/.
+          path: artifacts
 
       - name: Prepare LKM files
         if: ${{ inputs.pack_lkm }}
@@ -160,6 +168,12 @@ jobs:
           . .github/scripts/ci/common.sh
           ci_artifact_put "ksud-${{ matrix.target }}" \
             "target/${{ matrix.target }}/release/ksud"
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ksud-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/ksud
+          if-no-files-found: error
 
       - name: Release the parallelism slot
         if: always()
