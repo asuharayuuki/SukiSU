@@ -66,7 +66,6 @@ jobs:
     with:
       version_code: ${{ needs.determine-version.outputs.version_code }}
       release_build: true
-    secrets: inherit
 
   build-ksuinit:
     uses: ./.github/workflows/ksuinit.yml
@@ -118,6 +117,15 @@ jobs:
             git -c "http.${remote}/.extraHeader=Authorization: token ${TOKEN}" \
               clone -q --mirror "${remote}/${GITHUB_REPOSITORY}.git" "$mirror"
             set -x
+          elif command -v flock >/dev/null 2>&1; then
+            (
+              flock 9
+              git --git-dir="$mirror" fetch -q --prune origin \
+                "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*"
+            ) 9>"${mirror}.lock"
+          else
+            git --git-dir="$mirror" fetch -q --prune origin \
+              "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*"
           fi
           git clone -q --shared --no-checkout "$mirror" .
           git checkout -q "${GITHUB_SHA}"
@@ -143,7 +151,8 @@ jobs:
             rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
             cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
           done
-      - uses: ./.ci-actions/download-artifact
+      - name: Download the build artifacts
+        uses: ./.ci-actions/download-artifact
         with:
           path: artifacts
 
@@ -188,7 +197,8 @@ jobs:
           test -n "$(ls -A "$out")"
           echo "release files collected in ${out}"
 
-      - uses: ./.ci-actions/upload-artifact
+      - name: Upload the release bundle
+        uses: ./.ci-actions/upload-artifact
         with:
           name: release
           path: release/
@@ -196,7 +206,12 @@ jobs:
 
   # A tag push publishes a real release with every artifact attached: the kernel
   # modules, ksud, ksuinit and the manager APK. Without this the release only
-  # existed on the runner host.
+  # existed on the runner host.      - name: Write the job summary
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_summary_artifacts "release"
+
   publish-release:
     needs: [assemble]
     runs-on: ubuntu-latest
@@ -224,7 +239,8 @@ jobs:
             rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
             cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
           done
-      - uses: ./.ci-actions/download-artifact
+      - name: Download the release bundle
+        uses: ./.ci-actions/download-artifact
         if: github.ref_type == 'tag'
         with:
           name: release
@@ -288,71 +304,3 @@ jobs:
             echo "uploaded ${name}"
           done
           echo "release ${tag} updated"
-
-  # The runner has no artifact service, so a build only lives in the /ci volume
-  # where nobody can reach it. This copies it to the host directory the compose
-  # stack mounts at /out and keeps the five most recent builds.
-  archive:
-    needs: [publish-release]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Export the build to the out directory
-        run: |
-          set -eux
-          # This job has no checkout: it only reads what the other jobs wrote.
-          CI_ARTIFACT_ROOT="/ci/runs/${GITHUB_RUN_ID:-local}"
-          if [ ! -d /out ]; then
-            echo "no /out mount on this runner, skipping the archive"
-            exit 0
-          fi
-          # Run numbers are counted per workflow, so ci and release would collide
-          # on the same number; the workflow name keeps the folders apart.
-          workflow="$(printf '%s' "${GITHUB_WORKFLOW:-run}" | tr ' ' '-')"
-          dest="/out/${workflow}-${GITHUB_RUN_NUMBER:-$GITHUB_RUN_ID}"
-          rm -rf "$dest"
-          mkdir -p "$dest"
-          cp -a "$CI_ARTIFACT_ROOT"/. "$dest"/
-          # the R8 mapping is not something to keep
-          rm -rf "$dest/Manager-mappings"
-          # keep the five most recent builds, newest first by mtime
-          ls -1t /out | tail -n +6 | while read -r old; do
-            rm -rf "/out/$old"
-          done
-          echo "archived to ${dest}"
-          du -sh "$dest"
-          echo "kept: $(ls -1t /out | tr '\n' ' ')"
-
-      # GitHub-style artifact: Forgejo stores it server-side and lists it on the
-      # run page. Everything the jobs wrote lives in /ci/runs/<run>.
-      - name: Provide node and the action sources
-        run: |
-          set -eux
-          # act runs JS actions with `node` from the container PATH, and it would
-          # otherwise clone every `uses:` action from data.forgejo.org. Both are
-          # pre-seeded in the shared /ci volume, so a job needs no network for
-          # either.
-          found=
-          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
-            if [ -x "$dir/node" ]; then
-              echo "$dir" >> "$GITHUB_PATH"
-              found=1
-              break
-            fi
-          done
-          [ -n "$found" ] || { echo "node not found (tool cache and /ci/tools/node)" >&2; exit 1; }
-          mkdir -p "$GITHUB_WORKSPACE/.ci-actions"
-          for action in upload-artifact download-artifact; do
-            rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
-            cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
-          done
-      - name: Download the run artifacts
-        uses: ./.ci-actions/download-artifact
-        with:
-          path: artifacts
-
-      - uses: ./.ci-actions/upload-artifact
-        with:
-          name: sukisu-release
-          path: artifacts/
-          if-no-files-found: error

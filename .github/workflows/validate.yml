@@ -1,0 +1,68 @@
+name: Validate workflows
+
+# Runs the same validator as the documented pre-commit hook
+# (forgejo-runner validate), so a broken workflow file fails here instead of in
+# the build job. The binary is pre-seeded in /ci/tools/bin.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/**'
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eux
+          remote="https://git.zako.shirkneko.top:20004"
+          mirror="/ci/repo-cache/${GITHUB_REPOSITORY}.git"
+          mkdir -p "$(dirname "$mirror")"
+          if [ ! -d "$mirror" ]; then
+            # The token must not appear in the trace of `set -x`.
+            set +x
+            git -c "http.${remote}/.extraHeader=Authorization: token ${TOKEN}" \
+              clone -q --mirror "${remote}/${GITHUB_REPOSITORY}.git" "$mirror"
+            set -x
+          elif command -v flock >/dev/null 2>&1; then
+            # Concurrent jobs share one mirror, so the fetch has to be
+            # serialised or git fails with "cannot lock ref".
+            (
+              flock 9
+              git --git-dir="$mirror" fetch -q --prune origin \
+                "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*"
+            ) 9>"${mirror}.lock"
+          else
+            git --git-dir="$mirror" fetch -q --prune origin \
+              "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*"
+          fi
+          git clone -q --shared --no-checkout "$mirror" .
+          git checkout -q "${GITHUB_SHA}"
+
+      - name: Validate the workflow files
+        run: |
+          set -eux
+          if [ ! -x /ci/tools/bin/forgejo-runner ]; then
+            echo "forgejo-runner is missing from /ci/tools/bin on this runner;" >&2
+            echo "seed it once, see the runner README" >&2
+            exit 1
+          fi
+          /ci/tools/bin/forgejo-runner validate --directory .
+
+          count=$(find .github/workflows -name '*.y*ml' | wc -l)
+          summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
+          if [ -n "$summary" ]; then
+            {
+              echo "## 工作流校验"
+              echo
+              echo "全部 ${count} 个 workflow 通过 \`forgejo-runner validate\`。"
+            } >> "$summary"
+          fi

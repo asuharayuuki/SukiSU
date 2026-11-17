@@ -258,7 +258,7 @@ jobs:
           GITHUB_EVENT: ${{ toJson(github.event) }}
           # The public endpoint again: github.server_url points at the tunnel address,
           # so the link in the Telegram message would not open for anyone.
-          RUN_URL: https://git.zako.shirkneko.top:20004/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_URL: https://git.zako.shirkneko.top:20004/${{ github.repository }}/actions/runs/${{ github.run_number }}
           BRANCH: ${{ github.ref_name }}
         run: |
           set -eu

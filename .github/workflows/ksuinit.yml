@@ -128,23 +128,31 @@ jobs:
             rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
             cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
           done
-      - uses: ./.ci-actions/upload-artifact
+      - name: Upload ksuinit (aarch64)
+        uses: ./.ci-actions/upload-artifact
         with:
           name: ksuinit-aarch64
           path: target/aarch64-linux-android/release/ksuinit
           if-no-files-found: error
 
-      - uses: ./.ci-actions/upload-artifact
+      - name: Upload ksuinit (arm)
+        uses: ./.ci-actions/upload-artifact
         with:
           name: ksuinit-arm
           path: target/armv7-linux-androideabi/release/ksuinit
           if-no-files-found: error
 
-      - uses: ./.ci-actions/upload-artifact
+      - name: Upload ksuinit (x86_64)
+        uses: ./.ci-actions/upload-artifact
         with:
           name: ksuinit-x86_64
           path: target/x86_64-linux-android/release/ksuinit
           if-no-files-found: error
+      - name: Write the job summary
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_summary_artifacts "ksuinit-aarch64" "ksuinit-arm" "ksuinit-x86_64"
 
   build-riscv64:
     runs-on: ${{ inputs.os }}
@@ -228,8 +236,15 @@ jobs:
             rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
             cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
           done
-      - uses: ./.ci-actions/upload-artifact
+      - name: Upload ksuinit (riscv64)
+        uses: ./.ci-actions/upload-artifact
         with:
           name: ksuinit-riscv64
           path: target/riscv64-linux-android/release/ksuinit
           if-no-files-found: error
+
+      - name: Write the job summary
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_summary_artifacts "ksuinit-riscv64"

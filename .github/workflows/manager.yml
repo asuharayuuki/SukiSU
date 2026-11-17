@@ -326,7 +326,8 @@ jobs:
 
       # Repack runs on whichever runner is free, so the APK goes through
       # Forgejo instead of the per-host /ci volume.
-      - uses: ./.ci-actions/upload-artifact
+      - name: Upload the Gradle APK
+        uses: ./.ci-actions/upload-artifact
         with:
           name: ${{ steps.determine.outputs.title }}-gradle
           path: manager/app/build/outputs/apk/release/*.apk
@@ -421,7 +422,7 @@ jobs:
             rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
             cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
           done
-      - name: Download artifacts
+      - name: Download the build artifacts
         if: ${{ inputs.artifacts_run == '' }}
         uses: ./.ci-actions/download-artifact
         with:
@@ -576,8 +577,15 @@ jobs:
           ci_artifact_put "${{ steps.determine.outputs.title }}" \
             dist/*.apk
 
-      - uses: ./.ci-actions/upload-artifact
+      - name: Upload the manager APK
+        uses: ./.ci-actions/upload-artifact
         with:
           name: sukisu-manager
           path: dist/*.apk
           if-no-files-found: error
+
+      - name: Write the job summary
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_summary_artifacts "sukisu-manager"

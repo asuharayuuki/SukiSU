@@ -267,18 +267,25 @@ jobs:
 
       # Per-architecture artifact names match the directory names the consumer
       # jobs expect, so `download-artifact` recreates the same layout.
-      - uses: ./.ci-actions/upload-artifact
+      - name: Upload the aarch64 module
+        uses: ./.ci-actions/upload-artifact
         with:
           name: aarch64-${{ inputs.kmi }}-lkm
           path: upload/aarch64-${{ inputs.kmi }}-lkm
           if-no-files-found: error
 
-      - uses: ./.ci-actions/upload-artifact
+      - name: Upload the x86_64 module
+        uses: ./.ci-actions/upload-artifact
         with:
           name: x86_64-${{ inputs.kmi }}-lkm
           path: upload/x86_64-${{ inputs.kmi }}-lkm
           if-no-files-found: error
 
+      - name: Write the job summary
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_summary_artifacts "aarch64-${KMI}-lkm" "x86_64-${KMI}-lkm"
       - name: Release the parallelism slot
         if: always()
         run: |

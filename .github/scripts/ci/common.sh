@@ -84,3 +84,25 @@ ci_artifact_get() {
 ci_artifact_exists() {
 	[ -d "$(ci_artifact_path "$1")" ]
 }
+
+# ci_summary_artifacts NAME...
+#   Job Summary: rendered above the job log by Forgejo. One row per artifact with
+#   the download link (Forgejo serves artifacts at /actions/runs/<run_number>/artifacts/<name>).
+ci_summary_artifacts() {
+	local summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
+	[ -n "$summary" ] || return 0
+	local site="${FORGEJO_PUBLIC_URL:-https://git.zako.shirkneko.top:20004}"
+	local run="${site}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_NUMBER:-${GITHUB_RUN_ID}}"
+	{
+		echo "## 构建产物"
+		echo
+		echo "| Artifact | 下载 |"
+		echo "| --- | --- |"
+		local name
+		for name in "$@"; do
+			echo "| \`${name}\` | [下载](${run}/artifacts/${name}) |"
+		done
+		echo
+		echo "[运行详情](${run})"
+	} >> "$summary"
+}

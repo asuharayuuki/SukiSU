@@ -63,6 +63,9 @@ jobs:
       - name: Run ShellCheck
         run: |
           set -eux
+          # Scripts contain UTF-8 text (job summaries); under the C locale
+          # shellcheck aborts with "cannot encode character".
+          export LC_ALL=C.UTF-8 LANG=C.UTF-8
           shellcheck --version | head -2
           # Same exclusions as the previous marketplace action config.
           mapfile -t files < <(
