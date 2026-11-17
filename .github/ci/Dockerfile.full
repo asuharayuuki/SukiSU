@@ -1,0 +1,15 @@
+# Android + Rust, for the jobs that cross-compile with the NDK: ksud, ksuinit
+# and builtzygisk.
+FROM forgejo-ci/android:1
+
+ADD rust.tar /
+RUN rm -f /rust.tar
+
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:${PATH}
+
+RUN set -eux; \
+    cargo --version; \
+    rustup toolchain list; \
+    test -x "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"

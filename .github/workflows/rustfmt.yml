@@ -34,7 +34,7 @@ env:
 
 jobs:
   format:
-    runs-on: ubuntu-latest
+    runs-on: rust
     steps:
       - name: Checkout
         env:

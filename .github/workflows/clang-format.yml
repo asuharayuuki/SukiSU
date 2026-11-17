@@ -28,7 +28,7 @@ permissions:
 
 jobs:
   format:
-    runs-on: ubuntu-latest
+    runs-on: base
     steps:
       - name: Checkout
         env:

@@ -26,7 +26,7 @@ on:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: android
     steps:
       - name: Checkout
         env:
