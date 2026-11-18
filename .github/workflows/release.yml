@@ -152,12 +152,20 @@ jobs:
             cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
           done
       - name: Download the build artifacts
+        id: download_build
+        continue-on-error: true
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eux
           . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_download_all_artifacts "${GITHUB_WORKSPACE}/artifacts"
+
+      - name: Download the build artifacts (Forgejo fallback)
+        if: steps.download_build.outcome == 'failure'
+        uses: ./.ci-actions/download-artifact
+        with:
+          path: artifacts
 
       - name: Pack the release files
         run: |
@@ -250,13 +258,22 @@ jobs:
             cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
           done
       - name: Download the release bundle
+        id: download_release
         if: github.ref_type == 'tag'
+        continue-on-error: true
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eux
           . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_download_artifact release "${GITHUB_WORKSPACE}/release"
+
+      - name: Download the release bundle (Forgejo fallback)
+        if: github.ref_type == 'tag' && steps.download_release.outcome == 'failure'
+        uses: ./.ci-actions/download-artifact
+        with:
+          name: release
+          path: release
 
       - name: Upload the release assets
         if: github.ref_type == 'tag'

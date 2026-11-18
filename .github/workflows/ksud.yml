@@ -99,12 +99,20 @@ jobs:
             cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
           done
       - name: Download the build artifacts
+        id: download_build
+        continue-on-error: true
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eux
           . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_download_all_artifacts "${GITHUB_WORKSPACE}/artifacts"
+
+      - name: Download the build artifacts (Forgejo fallback)
+        if: steps.download_build.outcome == 'failure'
+        uses: ./.ci-actions/download-artifact
+        with:
+          path: artifacts
 
       - name: Prepare LKM files
         if: ${{ inputs.pack_lkm }}

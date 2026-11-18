@@ -94,7 +94,9 @@ jobs:
             cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
           done
       - name: Download APKs
+        id: download_apks
         if: ${{ inputs.publish }}
+        continue-on-error: true
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ARTIFACTS_RUN: ${{ inputs.artifacts_run }}
@@ -102,6 +104,13 @@ jobs:
           set -eux
           . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_download_artifact sukisu-manager "${GITHUB_WORKSPACE}/apks/Manager" "${ARTIFACTS_RUN:-}"
+
+      - name: Download APKs (Forgejo fallback)
+        if: inputs.publish && steps.download_apks.outcome == 'failure' && inputs.artifacts_run == ''
+        uses: ./.ci-actions/download-artifact
+        with:
+          name: sukisu-manager
+          path: apks/Manager
 
       - name: Prepare signing inputs
         if: ${{ inputs.publish }}

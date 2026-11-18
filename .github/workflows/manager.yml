@@ -175,6 +175,8 @@ jobs:
           python3 --version
 
       - name: Download ksud artifacts
+        id: download_ksud
+        continue-on-error: true
         env:
           ARTIFACTS_RUN: ${{ inputs.artifacts_run }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -182,6 +184,12 @@ jobs:
           set -eux
           . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_download_all_artifacts "${GITHUB_WORKSPACE}/artifacts" "${ARTIFACTS_RUN:-}"
+
+      - name: Download ksud artifacts (Forgejo fallback)
+        if: steps.download_ksud.outcome == 'failure' && inputs.artifacts_run == ''
+        uses: ./.ci-actions/download-artifact
+        with:
+          path: artifacts
 
       # --------------------------------------------------------
       # Copy ksud into Manager
@@ -416,6 +424,8 @@ jobs:
             cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
           done
       - name: Download the build artifacts
+        id: download_build
+        continue-on-error: true
         env:
           ARTIFACTS_RUN: ${{ inputs.artifacts_run }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -423,6 +433,12 @@ jobs:
           set -eux
           . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_download_all_artifacts "${GITHUB_WORKSPACE}/artifacts" "${ARTIFACTS_RUN:-}"
+
+      - name: Download the build artifacts (Forgejo fallback)
+        if: steps.download_build.outcome == 'failure' && inputs.artifacts_run == ''
+        uses: ./.ci-actions/download-artifact
+        with:
+          path: artifacts
 
       - name: Normalise the artifact layout
         run: |
