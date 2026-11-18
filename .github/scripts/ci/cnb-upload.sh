@@ -93,6 +93,21 @@ if [ "$status" = "200" ] || [ -n "${BODY_FILE:-}" ] || [ "$NAME" != "$TAG" ]; th
   }
 fi
 
+if [ "${CNB_CLEAR_ASSETS:-true}" != "false" ]; then
+  echo "clearing existing CNB release assets"
+  curl -sS --connect-timeout 10 --max-time 60 "${AUTH[@]}" \
+    "${BASE}/-/releases/${release_id}" -o "$release_json"
+  for asset_id in $(jq -r '.assets[]?.id' "$release_json"); do
+    code="$(curl -sS --connect-timeout 10 --max-time 60 -o /dev/null \
+      -w '%{http_code}' "${AUTH[@]}" \
+      -X DELETE "${BASE}/-/releases/${release_id}/assets/${asset_id}" || true)"
+    case "$code" in
+      200|204|404) ;;
+      *) echo "failed to delete CNB asset ${asset_id}: HTTP ${code}" >&2; exit 1 ;;
+    esac
+  done
+fi
+
 upload_one() {
   local file="$1" rel name size url_json upload_url verify_url code
   rel="${file#"$ASSETS"/}"
