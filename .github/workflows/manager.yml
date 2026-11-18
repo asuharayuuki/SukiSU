@@ -589,6 +589,7 @@ jobs:
           set -eux
           . .github/scripts/ci/common.sh
           ci_artifact_put sukisu-manager dist/*.apk
+          python3 -c 'import json,os,sys; d=sys.argv[1]; f=sorted(x for x in os.listdir(d) if x != "manifest.json" and os.path.isfile(os.path.join(d,x))); json.dump({"files": f}, open(os.path.join(d,"manifest.json"),"w"))' "${CI_ARTIFACT_ROOT}/sukisu-manager"
 
       - name: Write the job summary
         run: |

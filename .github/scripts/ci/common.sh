@@ -103,6 +103,42 @@ ci_download_artifact() {
 		return 0
 	fi
 
+	# Runner-to-runner transfer over EasyTier. Each runner serves /ci/runs on
+	# port 18080 bound to its EasyTier address (scripts/ci/artifact-server.sh).
+	local peers="${CI_ARTIFACT_PEERS:-100.0.0.20 100.0.0.21}"
+	local host manifest files file ok
+	manifest="$(mktemp)"
+	for host in $peers; do
+		if ! curl -fsS --max-time 3 -o "$manifest" \
+			"http://${host}:18080/${run_id}/${name}/manifest.json"; then
+			continue
+		fi
+		files="$(jq -r '.files[]' "$manifest")"
+		[ -n "$files" ] || continue
+		ok=1
+		for file in $files; do
+			case "$file" in
+			'' | */* | ..*)
+				echo "artifact ${name}: refusing unsafe file name ${file}" >&2
+				ok=0
+				break
+				;;
+			esac
+			if ! curl -fL --retry 3 --progress-bar \
+				"http://${host}:18080/${run_id}/${name}/${file}" \
+				-o "${dest}/${file}"; then
+				ok=0
+				break
+			fi
+		done
+		if [ "$ok" = 1 ]; then
+			rm -f "$manifest"
+			echo "artifact ${name} copied from EasyTier peer ${host}"
+			return 0
+		fi
+	done
+	rm -f "$manifest"
+
 	local token="${TOKEN:-${GITHUB_TOKEN:-}}"
 	[ -n "$token" ] || {
 		echo "artifact ${name}: missing GITHUB_TOKEN for API download" >&2
