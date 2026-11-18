@@ -309,6 +309,7 @@ jobs:
           THREAD_ID: ${{ vars.MESSAGE_THREAD_ID || '' }}
           BOT_TOKEN: ${{ vars.BOT_TOKEN || secrets.BOT_TOKEN }}
           CHAT_ID: ${{ vars.CHAT_ID || secrets.CHAT_ID }}
+          TG_API_BASE: ${{ vars.TG_API_BASE || 'https://api.telegram.org' }}
         run: |
           set -eu
           if [ -z "${CNB_TOKEN:-}" ]; then
@@ -317,7 +318,8 @@ jobs:
           fi
           payload="$(jq -nc --arg tag "$CNB_TAG" --arg kind "$CNB_KIND" \
             --arg thread "$THREAD_ID" --arg bot "$BOT_TOKEN" --arg chat "$CHAT_ID" \
-            '{event:"api_trigger_telegram",env:{TAG:$tag,KIND:$kind,THREAD_ID:$thread,TG_BOT_TOKEN:$bot,TG_CHAT_ID:$chat}}')"
+            --arg api "$TG_API_BASE" \
+            '{event:"api_trigger_telegram",env:{TAG:$tag,KIND:$kind,THREAD_ID:$thread,TG_BOT_TOKEN:$bot,TG_CHAT_ID:$chat,TG_API_BASE:$api}}')"
           curl -fsS --retry 3 --retry-all-errors -X POST \
             -H "Authorization: Bearer ${CNB_TOKEN}" \
             -H 'Accept: application/json' \
