@@ -259,9 +259,8 @@ private fun SectionTitle(@StringRes titleRes: Int) {
 
 @Composable
 private fun sourceDisplayTitle(source: UpdateSourceConfig): String = when (source.id) {
-    UpdateSourceDefaults.DEFAULT_ID -> stringResource(R.string.update_sources_default_name)
     UpdateSourceDefaults.CODEBERG_ID -> stringResource(R.string.update_sources_codeberg_name)
-    UpdateSourceDefaults.CNB_ID -> stringResource(R.string.update_sources_cnb_name)
+    UpdateSourceDefaults.DEFAULT_ID -> stringResource(R.string.update_sources_cnb_name)
     else -> source.displayName
 }
 

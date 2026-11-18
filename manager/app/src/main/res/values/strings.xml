@@ -1467,7 +1467,6 @@
     <string name="update_sources_pinned_hint">Pinned to %1$s; when it is unreachable the fastest source is used instead.</string>
     <string name="update_sources_ping_hint">Ping measures release API latency and samples the APK download speed.</string>
     <string name="update_sources_default_source">Built-in sources</string>
-    <string name="update_sources_default_name">SukiSU Official</string>
     <string name="update_sources_codeberg_name">Codeberg mirror</string>
     <string name="update_sources_cnb_name">CNB artifacts</string>
     <string name="update_sources_custom_sources">Custom sources</string>

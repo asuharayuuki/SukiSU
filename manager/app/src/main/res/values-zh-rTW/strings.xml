@@ -1086,7 +1086,6 @@
     <string name="update_sources_pinned_hint">已固定使用 %1$s；無法使用時會自動改用延遲最低的來源。</string>
     <string name="update_sources_ping_hint">Ping 會測試 Release API 延遲，並抽樣測速 APK 下載速度。</string>
     <string name="update_sources_default_source">內建來源</string>
-    <string name="update_sources_default_name">SukiSU 官方</string>
     <string name="update_sources_codeberg_name">Codeberg 鏡像</string>
     <string name="update_sources_cnb_name">CNB 製品源</string>
     <string name="update_sources_custom_sources">自訂來源</string>

@@ -385,11 +385,11 @@ class SettingsRepositoryImpl : SettingsRepository {
     override var pinnedUpdateSourceId: String
         // Explicit automatic selection stored by unpinning; distinct from "unset".
         get() = when (val raw = prefs.getString(KEY_PINNED_UPDATE_SOURCE, null)) {
-            null -> UpdateSourceDefaults.CNB_ID
+            null -> UpdateSourceDefaults.DEFAULT_ID
             PIN_AUTO -> ""
             // Legacy builds stored an empty string for "no pin"; treat that as
             // default preference so CNB is still preferred after upgrading.
-            else -> raw.ifBlank { UpdateSourceDefaults.CNB_ID }
+            else -> raw.ifBlank { UpdateSourceDefaults.DEFAULT_ID }
         }
         set(value) = prefs.edit {
             putString(KEY_PINNED_UPDATE_SOURCE, value.trim().ifBlank { PIN_AUTO })

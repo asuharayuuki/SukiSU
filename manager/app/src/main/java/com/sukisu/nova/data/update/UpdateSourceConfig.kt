@@ -97,20 +97,16 @@ data class ParsedUpdateSource(
 )
 
 object UpdateSourceDefaults {
-    const val DEFAULT_ID = "default"
-    const val DEFAULT_BASE_URL = "https://git.zako.shirkneko.top:20004"
+    /** Default source id; points at the CNB artifact repository. */
+    const val DEFAULT_ID = "cnb"
+    const val DEFAULT_BASE_URL = "https://cnb.cool"
     const val DEFAULT_OWNER = "shirkneko"
-    const val DEFAULT_REPO = "SukiSU"
+    const val DEFAULT_REPO = "sukisu-result"
 
     const val CODEBERG_ID = "codeberg"
     const val CODEBERG_BASE_URL = "https://codeberg.org"
     const val CODEBERG_OWNER = "ShirkNeko"
     const val CODEBERG_REPO = "SukiSU"
-
-    const val CNB_ID = "cnb"
-    const val CNB_BASE_URL = "https://cnb.cool"
-    const val CNB_OWNER = "shirkneko"
-    const val CNB_REPO = "sukisu-result"
 
     const val CI_TAG = "manager-ci"
     const val STABLE_ENDPOINT = "latest"
@@ -118,11 +114,11 @@ object UpdateSourceDefaults {
     /** Upper bound for custom sources; built-in sources are always present. */
     const val MAX_CUSTOM_SOURCES = 10
 
-    /** The original SukiSU Forgejo source. Always checked; cannot be removed. */
+    /** Default source: CNB artifact repository where CI mirrors manager builds. */
     val DEFAULT = UpdateSourceConfig(
         id = DEFAULT_ID,
         name = "",
-        platform = UpdateSourcePlatform.GITEA_FORGEJO,
+        platform = UpdateSourcePlatform.CNB,
         baseUrl = DEFAULT_BASE_URL,
         owner = DEFAULT_OWNER,
         repo = DEFAULT_REPO,
@@ -140,19 +136,8 @@ object UpdateSourceDefaults {
         enabled = true,
     )
 
-    /** CNB artifact repository where CI mirrors manager builds. */
-    val CNB = UpdateSourceConfig(
-        id = CNB_ID,
-        name = "",
-        platform = UpdateSourcePlatform.CNB,
-        baseUrl = CNB_BASE_URL,
-        owner = CNB_OWNER,
-        repo = CNB_REPO,
-        enabled = true,
-    )
-
-    /** All built-in sources; CNB is listed first because it is preferred by default. */
-    val BUILTIN_SOURCES: List<UpdateSourceConfig> = listOf(CNB, DEFAULT, CODEBERG)
+    /** All built-in sources; the default CNB source is listed first. */
+    val BUILTIN_SOURCES: List<UpdateSourceConfig> = listOf(DEFAULT, CODEBERG)
 
     fun isBuiltinId(id: String): Boolean = BUILTIN_SOURCES.any { it.id == id }
 }

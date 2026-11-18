@@ -91,6 +91,11 @@ private suspend fun checkReleaseVersion(isCi: Boolean): LatestVersionInfo {
     }
     val pinnedId = settings.pinnedUpdateSourceId
     val pinned = sources.firstOrNull { it.id == pinnedId }
+        ?: if (pinnedId.isNotBlank()) {
+            sources.firstOrNull { it.id == UpdateSourceDefaults.DEFAULT_ID }
+        } else {
+            null
+        }
 
     if (pinned != null) {
         querySource(pinned, isCi)?.let { return it.info }

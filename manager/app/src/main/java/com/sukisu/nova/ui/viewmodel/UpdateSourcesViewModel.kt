@@ -58,10 +58,23 @@ class UpdateSourcesViewModel(
     }
 
     private fun reload() {
+        val customSources = settings.updateSources
+        val storedPin = settings.pinnedUpdateSourceId
+        // A pin can outlive its source (removed built-in or deleted custom
+        // source). Show the default preference the checker will actually use.
+        val resolvedPin = if (
+            storedPin.isBlank() ||
+            UpdateSourceDefaults.isBuiltinId(storedPin) ||
+            customSources.any { it.id == storedPin }
+        ) {
+            storedPin
+        } else {
+            UpdateSourceDefaults.DEFAULT_ID
+        }
         _uiState.update {
             it.copy(
-                customSources = settings.updateSources,
-                pinnedId = settings.pinnedUpdateSourceId,
+                customSources = customSources,
+                pinnedId = resolvedPin,
             )
         }
     }
@@ -109,7 +122,9 @@ class UpdateSourcesViewModel(
     }
 
     fun setPinned(id: String) {
-        if (settings.pinnedUpdateSourceId == id) {
+        // Compare against the resolved pin shown in the UI, not the raw
+        // preference, so a stale pin still toggles off on the first tap.
+        if (_uiState.value.pinnedId == id) {
             settings.pinnedUpdateSourceId = ""
         } else {
             // Pinning a disabled source would make the pin unusable.
