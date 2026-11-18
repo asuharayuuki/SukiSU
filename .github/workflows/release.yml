@@ -240,6 +240,33 @@ jobs:
           } > release/notes.md
           bash .github/scripts/ci/cnb-upload.sh
 
+      - name: Trigger CNB Telegram delivery
+        if: github.ref_type == 'tag'
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
+          CNB_TAG: ${{ github.ref_name }}
+          CNB_KIND: release
+          THREAD_ID: ${{ vars.MESSAGE_RELEASES_THREAD_ID || '' }}
+          BOT_TOKEN: ${{ vars.BOT_TOKEN || secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ vars.CHAT_ID || secrets.CHAT_ID }}
+        run: |
+          set -eu
+          if [ -z "${CNB_TOKEN:-}" ]; then
+            echo "CNB_TOKEN is not configured; skipping CNB Telegram trigger"
+            exit 0
+          fi
+          payload="$(jq -nc --arg tag "$CNB_TAG" --arg kind "$CNB_KIND" \
+            --arg thread "$THREAD_ID" --arg bot "$BOT_TOKEN" --arg chat "$CHAT_ID" \
+            '{event:"api_trigger_telegram",env:{TAG:$tag,KIND:$kind,THREAD_ID:$thread,TG_BOT_TOKEN:$bot,TG_CHAT_ID:$chat}}')"
+          curl -fsS --retry 3 --retry-all-errors -X POST \
+            -H "Authorization: Bearer ${CNB_TOKEN}" \
+            -H 'Accept: application/json' \
+            -H 'Content-Type: application/json' \
+            -d "$payload" \
+            "https://api.cnb.cool/${CNB_REPO}/-/build/start" >/dev/null
+          echo "triggered CNB Telegram delivery"
+
       - name: Store the release bundle for LAN handoff
         run: |
           set -eux

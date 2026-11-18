@@ -299,6 +299,33 @@ jobs:
           } > cnb-notes.md
           bash .github/scripts/ci/cnb-upload.sh
 
+      - name: Trigger CNB Telegram delivery
+        if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
+          CNB_TAG: manager-ci
+          CNB_KIND: manager
+          THREAD_ID: ${{ vars.MESSAGE_THREAD_ID || '' }}
+          BOT_TOKEN: ${{ vars.BOT_TOKEN || secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ vars.CHAT_ID || secrets.CHAT_ID }}
+        run: |
+          set -eu
+          if [ -z "${CNB_TOKEN:-}" ]; then
+            echo "CNB_TOKEN is not configured; skipping CNB Telegram trigger"
+            exit 0
+          fi
+          payload="$(jq -nc --arg tag "$CNB_TAG" --arg kind "$CNB_KIND" \
+            --arg thread "$THREAD_ID" --arg bot "$BOT_TOKEN" --arg chat "$CHAT_ID" \
+            '{event:"api_trigger_telegram",env:{TAG:$tag,KIND:$kind,THREAD_ID:$thread,TG_BOT_TOKEN:$bot,TG_CHAT_ID:$chat}}')"
+          curl -fsS --retry 3 --retry-all-errors -X POST \
+            -H "Authorization: Bearer ${CNB_TOKEN}" \
+            -H 'Accept: application/json' \
+            -H 'Content-Type: application/json' \
+            -d "$payload" \
+            "https://api.cnb.cool/${CNB_REPO}/-/build/start" >/dev/null
+          echo "triggered CNB Telegram delivery"
+
       # Secrets cannot be used inside `if:`; a step turns them into an output.
       - name: Check Telegram configuration
         id: telegram
@@ -314,8 +341,10 @@ jobs:
             echo "Telegram upload skipped: set BOT_TOKEN and CHAT_ID to enable it"
           fi
 
-      - name: Upload to Telegram
-        if: ${{ inputs.publish && steps.telegram.outputs.upload == 'true' }}
+      # Telegram delivery is delegated to CNB so a local network failure cannot
+      # break the build. The CNB pipeline is triggered after the CNB upload.
+      - name: Upload to Telegram (legacy, disabled)
+        if: ${{ false }}
         timeout-minutes: 20
         env:
           CHAT_ID: ${{ vars.CHAT_ID || secrets.CHAT_ID }}
