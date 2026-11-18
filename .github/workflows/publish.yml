@@ -235,11 +235,39 @@ jobs:
             echo "uploaded ${name}"
           done
 
-          # Keep the title in step with the build so the app can parse the version.
-          payload="$(jq -nc --arg name "Manager CI (${code})" '{name: $name, prerelease: true}')"
+          # Keep the title in step with the build. Derive it from the uploaded
+          # asset names (highest version) rather than the first artifact, which
+          # could be a stale split and leave the title behind the assets.
+          asset_code=""
+          for f in apks/split/*.apk; do
+            n="$(basename "$f")"
+            c="${n##*_}"
+            c="${c%%-*}"
+            case "$c" in
+              '' | *[!0-9]*) continue ;;
+            esac
+            if [ -z "$asset_code" ] || [ "$c" -gt "$asset_code" ]; then
+              asset_code="$c"
+            fi
+          done
+          test -n "$asset_code"
+          code="$asset_code"
+          payload="$(jq -nc --arg sha "$GITHUB_SHA" --arg name "Manager CI (${code})" \
+            '{tag_name: "manager-ci", target_commitish: $sha, name: $name,
+              prerelease: true, body: "Rolling CI build from main. Experimental; may be unstable."}')"
           net -f -X PATCH -H "$auth" -H 'Content-Type: application/json' \
             -d "$payload" "$api/releases/${id}" >/dev/null
-          echo "release ${tag} updated"
+
+          # Never leave a stale title behind silently: the app parses the version
+          # from here (and now also tolerates a stale title by reading assets).
+          curl -sS --connect-timeout 10 --max-time 60 -H "$auth" \
+            "$api/releases/tags/${tag}" -o /tmp/release-title.json
+          actual="$(jq -r '.name // ""' /tmp/release-title.json)"
+          test "$actual" = "Manager CI (${code})" || {
+            echo "release title mismatch: got '${actual}', expected 'Manager CI (${code})'" >&2
+            exit 1
+          }
+          echo "release ${tag} updated: ${actual}"
 
       # Secrets cannot be used inside `if:`; a step turns them into an output.
       - name: Check Telegram configuration

@@ -73,23 +73,29 @@ private fun checkReleaseVersion(endpoint: String, isCi: Boolean): LatestVersionI
             val assets = json.getJSONArray("assets")
             val changelog = json.optString("body")
             if (isCi) {
-                val versionCode = Regex("""\((\d+)\)""").find(json.optString("name"))
-                    ?.groupValues?.get(1)?.toLongOrNull() ?: return LatestVersionInfo()
                 val abi = Build.SUPPORTED_ABIS.firstOrNull() ?: return LatestVersionInfo()
+                // The release title has been stale in the past (assets moved to a
+                // newer build before the title did), so read the version from the
+                // asset names instead of trusting the title.
                 val apkPattern = Regex(
-                    """^SukiSU_Nova_.+_${versionCode}-${Regex.escape(abi)}-release\.apk$"""
+                    """^SukiSU_Nova_.+_(\d+)-${Regex.escape(abi)}-release\.apk$"""
                 )
                 val apk = (0 until assets.length()).asSequence()
                     .mapNotNull { assets.optJSONObject(it) }
-                    .firstOrNull { apkPattern.matches(it.optString("name")) }
+                    .mapNotNull { asset ->
+                        val match = apkPattern.matchEntire(asset.optString("name"))
+                            ?: return@mapNotNull null
+                        match.groupValues[1].toLongOrNull()?.let { it to asset }
+                    }
+                    .maxByOrNull { it.first }
                     ?: run {
-                        android.util.Log.w("UpdateCheck", "CI: no APK for version=$versionCode, abi=$abi")
+                        android.util.Log.w("UpdateCheck", "CI: no APK for abi=$abi")
                         return LatestVersionInfo()
                     }
-                val downloadUrl = apk.optString("browser_download_url")
+                val downloadUrl = apk.second.optString("browser_download_url")
                     .takeIf { it.startsWith("https://git.zako.shirkneko.top:20004/shirkneko/SukiSU/releases/download/manager-ci/") }
                     ?: return LatestVersionInfo()
-                return LatestVersionInfo(versionCode, downloadUrl, changelog)
+                return LatestVersionInfo(apk.first, downloadUrl, changelog)
             }
             val abi = Build.SUPPORTED_ABIS.firstOrNull() ?: return LatestVersionInfo()
             val archPattern = Regex("""^SukiSU_Nova_v(.+?)_(\d+)-${Regex.escape(abi)}-release\.apk$""")
