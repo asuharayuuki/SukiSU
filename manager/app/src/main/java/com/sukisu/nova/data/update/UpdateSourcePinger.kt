@@ -33,10 +33,7 @@ suspend fun pingUpdateSource(source: UpdateSourceConfig): UpdateSourcePingResult
         try {
             val request = Request.Builder()
                 .url(source.releasesApiUrl(UpdateSourceDefaults.STABLE_ENDPOINT))
-                .header(
-                    "Accept",
-                    if (source.isGitHub) "application/vnd.github+json" else "application/json",
-                )
+                .header("Accept", source.acceptHeader)
                 .build()
 
             val started = System.nanoTime()
@@ -44,9 +41,18 @@ suspend fun pingUpdateSource(source: UpdateSourceConfig): UpdateSourcePingResult
                 if (!response.isSuccessful) {
                     return@withContext UpdateSourcePingResult(error = "HTTP ${response.code}")
                 }
-                val json = JSONObject(response.body.string())
+                val body = response.body.string()
                 val apiLatencyMs = (System.nanoTime() - started) / 1_000_000
-                val assetUrl = pickPingAsset(json)
+                val assetUrl = when (source.platform) {
+                    UpdateSourcePlatform.CNB ->
+                        CnbReleaseParser.pickPingRelease(
+                            CnbReleaseParser.parseReleases(body, source.baseUrl),
+                        )?.let { pickPingAsset(it.assets) }
+
+                    UpdateSourcePlatform.GITHUB,
+                    UpdateSourcePlatform.GITEA_FORGEJO,
+                    -> pickPingAsset(parseJsonAssets(body))
+                }
                 val downloadKbps = assetUrl?.let { measureDownloadKbps(client, it) }
                 UpdateSourcePingResult(
                     apiLatencyMs = apiLatencyMs,
@@ -60,14 +66,24 @@ suspend fun pingUpdateSource(source: UpdateSourceConfig): UpdateSourcePingResult
         }
     }
 
-private fun pickPingAsset(json: JSONObject): String? {
-    val assets = json.optJSONArray("assets") ?: return null
+private fun parseJsonAssets(body: String): List<SourceReleaseAsset> {
+    val assets = JSONObject(body).optJSONArray("assets") ?: return emptyList()
+    return (0 until assets.length()).mapNotNull { index ->
+        assets.optJSONObject(index)?.let { asset ->
+            SourceReleaseAsset(
+                name = asset.optString("name"),
+                url = asset.optString("browser_download_url"),
+            )
+        }
+    }
+}
+
+private fun pickPingAsset(assets: List<SourceReleaseAsset>): String? {
     val abi = Build.SUPPORTED_ABIS.firstOrNull()
-    val candidates = (0 until assets.length()).mapNotNull { assets.optJSONObject(it) }
-    val preferred = candidates.firstOrNull { asset ->
-        abi != null && asset.optString("name").endsWith("-$abi-release.apk")
-    } ?: candidates.firstOrNull { it.optString("name").endsWith(".apk") }
-    return preferred?.optString("browser_download_url")?.takeIf { it.isNotBlank() }
+    val preferred = assets.firstOrNull { asset ->
+        abi != null && asset.name.endsWith("-$abi-release.apk")
+    } ?: assets.firstOrNull { it.name.endsWith(".apk") }
+    return preferred?.url?.takeIf { it.isNotBlank() }
 }
 
 private fun measureDownloadKbps(client: OkHttpClient, url: String): Long? = runCatching {

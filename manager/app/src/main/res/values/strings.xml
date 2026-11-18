@@ -1468,14 +1468,15 @@
     <string name="update_sources_ping_hint">Ping measures release API latency and samples the APK download speed.</string>
     <string name="update_sources_default_source">Built-in sources</string>
     <string name="update_sources_default_name">SukiSU Official</string>
-    <string name="update_sources_neko_name">Neko mirror</string>
     <string name="update_sources_codeberg_name">Codeberg mirror</string>
+    <string name="update_sources_cnb_name">CNB artifacts</string>
     <string name="update_sources_custom_sources">Custom sources</string>
     <string name="update_sources_default_badge">Built-in</string>
     <string name="update_sources_pinned_badge">Pinned</string>
     <string name="update_sources_empty">No custom update sources yet.</string>
     <string name="update_sources_platform_github">GitHub · %1$s</string>
     <string name="update_sources_platform_gitea">Gitea / Forgejo · %1$s</string>
+    <string name="update_sources_platform_cnb">CNB · %1$s</string>
     <string name="update_sources_add">Add update source</string>
     <string name="update_sources_add_title">Add update source</string>
     <string name="update_sources_url">Repository URL</string>
@@ -1483,6 +1484,7 @@
     <string name="update_sources_name">Name (optional)</string>
     <string name="update_sources_detected_github">Detected: GitHub · %1$s</string>
     <string name="update_sources_detected_gitea">Detected: Gitea / Forgejo · %1$s</string>
+    <string name="update_sources_detected_cnb">Detected: CNB · %1$s</string>
     <string name="update_sources_invalid_url">Cannot parse the repository URL. Paste the full link.</string>
     <string name="update_sources_duplicate">This update source already exists.</string>
     <string name="update_sources_limit">You can add up to %1$d custom sources.</string>

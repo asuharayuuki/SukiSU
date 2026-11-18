@@ -380,7 +380,8 @@ class SettingsRepositoryImpl : SettingsRepository {
         }
 
     override var pinnedUpdateSourceId: String
-        get() = prefs.getString(KEY_PINNED_UPDATE_SOURCE, "") ?: ""
+        // CNB is the default preferred source until the user pins or unpins one.
+        get() = prefs.getString(KEY_PINNED_UPDATE_SOURCE, UpdateSourceDefaults.CNB_ID) ?: ""
         set(value) = prefs.edit { putString(KEY_PINNED_UPDATE_SOURCE, value.trim()) }
 
     override var checkModuleUpdate: Boolean

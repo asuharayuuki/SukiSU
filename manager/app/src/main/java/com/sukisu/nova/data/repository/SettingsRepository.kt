@@ -80,9 +80,12 @@ interface SettingsRepository {
     var checkUpdate: Boolean
     var checkCiUpdate: Boolean
     var checkModuleUpdate: Boolean
-    /** Extra release repositories checked besides [com.sukisu.nova.data.update.UpdateSourceDefaults.DEFAULT]. */
+    /** Extra release repositories checked besides the built-in sources. */
     var updateSources: List<com.sukisu.nova.data.update.UpdateSourceConfig>
-    /** Empty means automatic (lowest-latency) selection; otherwise the pinned source id. */
+    /**
+     * Pinned source id, or empty for automatic (lowest-latency) selection.
+     * Defaults to the CNB source until the user pins or unpins a source.
+     */
     var pinnedUpdateSourceId: String
     var autoDeleteModuleZip: Boolean
     /** When enabled, a manager self-update installs without keeping the APK in Downloads. */

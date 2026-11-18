@@ -68,8 +68,8 @@ import com.sukisu.nova.ui.viewmodel.UpdateSourcesViewModel
 import java.util.Locale
 
 /**
- * Managed from the About page's top bar. The built-in source is always shown
- * and cannot be removed; custom GitHub/Gitea/Forgejo repositories are optional.
+ * Managed from the About page's top bar. The built-in sources are always shown
+ * and cannot be removed; custom GitHub/Gitea/Forgejo/CNB repositories are optional.
  */
 @Composable
 fun UpdateSourcesScreen(viewModel: UpdateSourcesViewModel = viewModel()) {
@@ -260,8 +260,8 @@ private fun SectionTitle(@StringRes titleRes: Int) {
 @Composable
 private fun sourceDisplayTitle(source: UpdateSourceConfig): String = when (source.id) {
     UpdateSourceDefaults.DEFAULT_ID -> stringResource(R.string.update_sources_default_name)
-    UpdateSourceDefaults.NEKO_ID -> stringResource(R.string.update_sources_neko_name)
     UpdateSourceDefaults.CODEBERG_ID -> stringResource(R.string.update_sources_codeberg_name)
+    UpdateSourceDefaults.CNB_ID -> stringResource(R.string.update_sources_cnb_name)
     else -> source.displayName
 }
 
@@ -313,10 +313,10 @@ private fun UpdateSourceCard(
                     }
                     Text(
                         text = stringResource(
-                            if (source.platform == UpdateSourcePlatform.GITHUB) {
-                                R.string.update_sources_platform_github
-                            } else {
-                                R.string.update_sources_platform_gitea
+                            when (source.platform) {
+                                UpdateSourcePlatform.GITHUB -> R.string.update_sources_platform_github
+                                UpdateSourcePlatform.GITEA_FORGEJO -> R.string.update_sources_platform_gitea
+                                UpdateSourcePlatform.CNB -> R.string.update_sources_platform_cnb
                             },
                             source.baseUrl,
                         ),
@@ -444,10 +444,10 @@ private fun AddUpdateSourceDialog(
                         .removePrefix("http://")
                     Text(
                         text = stringResource(
-                            if (parsed.platform == UpdateSourcePlatform.GITHUB) {
-                                R.string.update_sources_detected_github
-                            } else {
-                                R.string.update_sources_detected_gitea
+                            when (parsed.platform) {
+                                UpdateSourcePlatform.GITHUB -> R.string.update_sources_detected_github
+                                UpdateSourcePlatform.GITEA_FORGEJO -> R.string.update_sources_detected_gitea
+                                UpdateSourcePlatform.CNB -> R.string.update_sources_detected_cnb
                             },
                             "${parsed.owner}/${parsed.repo} · $host",
                         ),

@@ -14,8 +14,11 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import com.sukisu.nova.data.registry.ExpectedFile
 import com.sukisu.nova.data.repository.SettingsRepositoryImpl
+import com.sukisu.nova.data.update.CnbReleaseParser
+import com.sukisu.nova.data.update.SourceReleaseAsset
 import com.sukisu.nova.data.update.UpdateSourceConfig
 import com.sukisu.nova.data.update.UpdateSourceDefaults
+import com.sukisu.nova.data.update.UpdateSourcePlatform
 import com.sukisu.nova.ksuApp
 import com.sukisu.nova.ui.util.module.LatestVersionInfo
 import okhttp3.Call
@@ -174,46 +177,155 @@ private suspend fun fetchFromSource(
     }
     val request = Request.Builder()
         .url(source.releasesApiUrl(endpoint))
-        .header("Accept", if (source.isGitHub) "application/vnd.github+json" else "application/json")
+        .header("Accept", source.acceptHeader)
         .build()
 
-    return suspendCancellableCoroutine { continuation ->
-        val call = updateHttpClient.newCall(request)
-        continuation.invokeOnCancellation { call.cancel() }
-        call.enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                if (continuation.isActive) continuation.resume(LatestVersionInfo())
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                val info = try {
-                    response.use { parseReleaseResponse(source, isCi, it) }
-                } catch (error: Exception) {
-                    android.util.Log.w(
-                        "UpdateCheck",
-                        "${source.displayName}: cannot parse release response",
-                        error,
-                    )
-                    LatestVersionInfo()
-                }
-                if (continuation.isActive) continuation.resume(info)
-            }
-        })
-    }
-}
-
-private fun parseReleaseResponse(
-    source: UpdateSourceConfig,
-    isCi: Boolean,
-    response: Response,
-): LatestVersionInfo {
-    if (!response.isSuccessful) {
+    val response = fetchUpdateBody(source, request) ?: return LatestVersionInfo()
+    if (!response.successful) {
         android.util.Log.w("UpdateCheck", "${source.displayName}: HTTP ${response.code}")
         return LatestVersionInfo()
     }
-    val json = JSONObject(response.body.string())
+    return try {
+        parseReleaseResponse(source, isCi, response.text)
+    } catch (error: Exception) {
+        android.util.Log.w(
+            "UpdateCheck",
+            "${source.displayName}: cannot parse release response",
+            error,
+        )
+        LatestVersionInfo()
+    }
+}
+
+private data class UpdateResponseBody(
+    val successful: Boolean,
+    val code: Int,
+    val text: String,
+)
+
+/**
+ * Runs one release request with OkHttp's async dispatcher so a losing source
+ * in the race can be cancelled without blocking a thread.
+ */
+private suspend fun fetchUpdateBody(
+    source: UpdateSourceConfig,
+    request: Request,
+): UpdateResponseBody? = suspendCancellableCoroutine<UpdateResponseBody?> { continuation ->
+    val call = updateHttpClient.newCall(request)
+    continuation.invokeOnCancellation { call.cancel() }
+    call.enqueue(object : Callback {
+        override fun onFailure(call: Call, e: IOException) {
+            if (continuation.isActive) continuation.resume(null)
+        }
+
+        override fun onResponse(call: Call, response: Response) {
+            val body = try {
+                response.use {
+                    UpdateResponseBody(
+                        successful = it.isSuccessful,
+                        code = it.code,
+                        text = if (it.isSuccessful) it.body.string() else "",
+                    )
+                }
+            } catch (error: Exception) {
+                android.util.Log.w(
+                    "UpdateCheck",
+                    "${source.displayName}: cannot read release response",
+                    error,
+                )
+                null
+            }
+            if (continuation.isActive) continuation.resume(body)
+        }
+    })
+}
+
+/** Fetches a small auxiliary file (a release-notes markdown asset). */
+private suspend fun fetchText(url: String): String? =
+    suspendCancellableCoroutine<String?> { continuation ->
+        val call = updateHttpClient.newCall(Request.Builder().url(url).build())
+        continuation.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                if (continuation.isActive) continuation.resume(null)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val text = try {
+                    response.use { if (it.isSuccessful) it.body.string() else null }
+                } catch (error: Exception) {
+                    null
+                }
+                if (continuation.isActive) continuation.resume(text)
+            }
+        })
+    }
+
+private suspend fun parseReleaseResponse(
+    source: UpdateSourceConfig,
+    isCi: Boolean,
+    body: String,
+): LatestVersionInfo = when (source.platform) {
+    UpdateSourcePlatform.CNB -> parseCnbResponse(source, isCi, body)
+    UpdateSourcePlatform.GITHUB,
+    UpdateSourcePlatform.GITEA_FORGEJO,
+    -> parseJsonResponse(source, isCi, body)
+}
+
+/** GitHub and Gitea/Forgejo return a single release with an `assets` array. */
+private suspend fun parseJsonResponse(
+    source: UpdateSourceConfig,
+    isCi: Boolean,
+    body: String,
+): LatestVersionInfo {
+    val json = JSONObject(body)
     val assets = json.getJSONArray("assets")
-    val changelog = json.optString("body")
+    val releaseAssets = (0 until assets.length()).mapNotNull { index ->
+        assets.optJSONObject(index)?.let { asset ->
+            SourceReleaseAsset(
+                name = asset.optString("name"),
+                url = asset.optString("browser_download_url"),
+            )
+        }
+    }
+    val changelog = json.optString("body").ifBlank { fetchReleaseNotes(releaseAssets) }
+    return pickReleaseAsset(source, isCi, releaseAssets, changelog)
+}
+
+/** CNB carries the whole release list inside the page's `__NEXT_DATA__` payload. */
+private suspend fun parseCnbResponse(
+    source: UpdateSourceConfig,
+    isCi: Boolean,
+    body: String,
+): LatestVersionInfo {
+    val releases = CnbReleaseParser.parseReleases(body, source.baseUrl)
+    val release = CnbReleaseParser.pickRelease(releases, isCi)
+        ?: return LatestVersionInfo()
+    // CI releases may leave the release body empty and publish the notes as a
+    // markdown asset; the update dialog renders it as Markdown like `body`.
+    val changelog = release.changelog.ifBlank { fetchReleaseNotes(release.assets) }
+    return pickReleaseAsset(source, isCi, release.assets, changelog)
+}
+
+private suspend fun fetchReleaseNotes(assets: List<SourceReleaseAsset>): String {
+    val notes = (assets.firstOrNull { it.name.equals("notes.md", ignoreCase = true) }
+        ?: assets.firstOrNull { it.name.endsWith(".md", ignoreCase = true) })
+        ?.takeIf { it.url.startsWith("https://") || it.url.startsWith("http://") }
+        ?: return ""
+    return fetchText(notes.url)?.trim().orEmpty()
+}
+
+/**
+ * Chooses the APK matching this device. CI builds embed the version code in
+ * the asset name (the highest one wins); stable builds use the version name
+ * and fall back to a universal APK only when no per-ABI build exists.
+ */
+private fun pickReleaseAsset(
+    source: UpdateSourceConfig,
+    isCi: Boolean,
+    assets: List<SourceReleaseAsset>,
+    changelog: String,
+): LatestVersionInfo {
     val abi = Build.SUPPORTED_ABIS.firstOrNull() ?: return LatestVersionInfo()
     val downloadPrefix = source.downloadUrlPrefix()
 
@@ -224,10 +336,9 @@ private fun parseReleaseResponse(
         val apkPattern = Regex(
             """^SukiSU_Nova_.+_(\d+)-${Regex.escape(abi)}-release\.apk$"""
         )
-        val apk = (0 until assets.length()).asSequence()
-            .mapNotNull { assets.optJSONObject(it) }
+        val apk = assets.asSequence()
             .mapNotNull { asset ->
-                val match = apkPattern.matchEntire(asset.optString("name"))
+                val match = apkPattern.matchEntire(asset.name)
                     ?: return@mapNotNull null
                 match.groupValues[1].toLongOrNull()?.let { it to asset }
             }
@@ -236,7 +347,7 @@ private fun parseReleaseResponse(
                 android.util.Log.w("UpdateCheck", "${source.displayName} CI: no APK for abi=$abi")
                 return LatestVersionInfo()
             }
-        val downloadUrl = apk.second.optString("browser_download_url")
+        val downloadUrl = apk.second.url
             .takeIf { it.startsWith(downloadPrefix) }
             ?: return LatestVersionInfo()
         return LatestVersionInfo(
@@ -251,16 +362,14 @@ private fun parseReleaseResponse(
 
     val archPattern = Regex("""^SukiSU_Nova_v(.+?)_(\d+)-${Regex.escape(abi)}-release\.apk$""")
     val universalPattern = Regex("""^SukiSU_Nova_v(.+?)_(\d+)-release\.apk$""")
-    val apkAssets = (0 until assets.length()).map { assets.getJSONObject(it) }
     // Prefer the device-specific asset, falling back to an actual universal APK only.
     for (pattern in listOf(archPattern, universalPattern)) {
-        for (asset in apkAssets) {
-            val match = pattern.matchEntire(asset.getString("name")) ?: continue
-            val downloadUrl = asset.getString("browser_download_url")
-            if (!downloadUrl.startsWith(downloadPrefix)) continue
+        for (asset in assets) {
+            val match = pattern.matchEntire(asset.name) ?: continue
+            if (!asset.url.startsWith(downloadPrefix)) continue
             return LatestVersionInfo(
                 versionCode = match.groupValues[2].toLong(),
-                downloadUrl = downloadUrl,
+                downloadUrl = asset.url,
                 changelog = changelog,
                 sourceId = source.id,
                 sourceName = source.displayName,

@@ -6,7 +6,8 @@ import kotlinx.serialization.Serializable
 /**
  * Hosting platform of an update source. GitHub and Gitea/Forgejo expose the
  * same release JSON shape (`assets[].name`/`browser_download_url`/`body`), but
- * their API roots and download hosts differ.
+ * their API roots and download hosts differ. CNB has no anonymous release
+ * API, so its web page payload is read instead (see [CnbReleaseParser]).
  */
 @Serializable
 enum class UpdateSourcePlatform {
@@ -14,6 +15,9 @@ enum class UpdateSourcePlatform {
 
     /** Gitea and Forgejo share one REST API; the label covers both. */
     GITEA_FORGEJO,
+
+    /** cnb.cool; releases are parsed from the public release page. */
+    CNB,
 }
 
 /**
@@ -37,6 +41,14 @@ data class UpdateSourceConfig(
     val isGitHub: Boolean
         get() = platform == UpdateSourcePlatform.GITHUB
 
+    /** `Accept` header the release request should carry. */
+    val acceptHeader: String
+        get() = when (platform) {
+            UpdateSourcePlatform.GITHUB -> "application/vnd.github+json"
+            UpdateSourcePlatform.GITEA_FORGEJO -> "application/json"
+            UpdateSourcePlatform.CNB -> "text/html"
+        }
+
     /** `latest` or `tags/<tag>` below the releases collection. */
     fun releasesApiUrl(endpoint: String): String = when (platform) {
         UpdateSourcePlatform.GITHUB ->
@@ -44,12 +56,18 @@ data class UpdateSourceConfig(
 
         UpdateSourcePlatform.GITEA_FORGEJO ->
             "$baseUrl/api/v1/repos/$owner/$repo/releases/$endpoint"
+
+        // CNB serves every release from one page and offers no anonymous
+        // JSON API; the parser splits the list locally.
+        UpdateSourcePlatform.CNB ->
+            "$baseUrl/$owner/$repo/-/releases"
     }
 
     /** Repository metadata endpoint, used to probe a source without fetching releases. */
     fun repoApiUrl(): String = when (platform) {
         UpdateSourcePlatform.GITHUB -> "https://api.github.com/repos/$owner/$repo"
         UpdateSourcePlatform.GITEA_FORGEJO -> "$baseUrl/api/v1/repos/$owner/$repo"
+        UpdateSourcePlatform.CNB -> "$baseUrl/$owner/$repo"
     }
 
     /** Prefix every release asset URL of this source must start with. */
@@ -59,6 +77,9 @@ data class UpdateSourceConfig(
 
         UpdateSourcePlatform.GITEA_FORGEJO ->
             "$baseUrl/$owner/$repo/releases/download/"
+
+        UpdateSourcePlatform.CNB ->
+            "$baseUrl/$owner/$repo/-/releases/download/"
     }
 
     fun matches(parsed: ParsedUpdateSource): Boolean =
@@ -81,15 +102,15 @@ object UpdateSourceDefaults {
     const val DEFAULT_OWNER = "shirkneko"
     const val DEFAULT_REPO = "SukiSU"
 
-    const val NEKO_ID = "neko"
-    const val NEKO_BASE_URL = "https://git.neko.shirkneko.top:55002"
-    const val NEKO_OWNER = "shirkneko"
-    const val NEKO_REPO = "SukiSU"
-
     const val CODEBERG_ID = "codeberg"
     const val CODEBERG_BASE_URL = "https://codeberg.org"
     const val CODEBERG_OWNER = "ShirkNeko"
     const val CODEBERG_REPO = "SukiSU"
+
+    const val CNB_ID = "cnb"
+    const val CNB_BASE_URL = "https://cnb.cool"
+    const val CNB_OWNER = "shirkneko"
+    const val CNB_REPO = "sukisu-result"
 
     const val CI_TAG = "manager-ci"
     const val STABLE_ENDPOINT = "latest"
@@ -108,17 +129,6 @@ object UpdateSourceDefaults {
         enabled = true,
     )
 
-    /** Neko's Forgejo mirror, always checked; cannot be removed. */
-    val NEKO = UpdateSourceConfig(
-        id = NEKO_ID,
-        name = "",
-        platform = UpdateSourcePlatform.GITEA_FORGEJO,
-        baseUrl = NEKO_BASE_URL,
-        owner = NEKO_OWNER,
-        repo = NEKO_REPO,
-        enabled = true,
-    )
-
     /** Codeberg mirror (Forgejo API), always checked; cannot be removed. */
     val CODEBERG = UpdateSourceConfig(
         id = CODEBERG_ID,
@@ -130,8 +140,19 @@ object UpdateSourceDefaults {
         enabled = true,
     )
 
-    /** All built-in sources, original default first. */
-    val BUILTIN_SOURCES: List<UpdateSourceConfig> = listOf(DEFAULT, NEKO, CODEBERG)
+    /** CNB artifact repository where CI mirrors manager builds. */
+    val CNB = UpdateSourceConfig(
+        id = CNB_ID,
+        name = "",
+        platform = UpdateSourcePlatform.CNB,
+        baseUrl = CNB_BASE_URL,
+        owner = CNB_OWNER,
+        repo = CNB_REPO,
+        enabled = true,
+    )
+
+    /** All built-in sources; CNB is listed first because it is preferred by default. */
+    val BUILTIN_SOURCES: List<UpdateSourceConfig> = listOf(CNB, DEFAULT, CODEBERG)
 
     fun isBuiltinId(id: String): Boolean = BUILTIN_SOURCES.any { it.id == id }
 }
@@ -141,9 +162,9 @@ object UpdateSourceDefaults {
  * `https://github.com/owner/repo`, `https://git.example.com/owner/repo.git`,
  * `git.example.com/owner/repo` or `git@github.com:owner/repo.git`.
  *
- * GitHub hosts are detected automatically; every other host is treated as
- * Gitea/Forgejo because both offer the same API. Extra path segments after
- * `owner/repo` (a release page, issues, …) are ignored.
+ * GitHub and CNB hosts are detected automatically; every other host is
+ * treated as Gitea/Forgejo because both offer the same API. Extra path
+ * segments after `owner/repo` (a release page, issues, …) are ignored.
  */
 fun parseUpdateSourceUrl(raw: String): ParsedUpdateSource? {
     var text = raw.trim()
@@ -173,10 +194,10 @@ fun parseUpdateSourceUrl(raw: String): ParsedUpdateSource? {
 
     val port = if (uri.port != -1) ":${uri.port}" else ""
     val baseUrl = "$scheme://$host$port"
-    val platform = if (host == "github.com" || host.endsWith(".github.com")) {
-        UpdateSourcePlatform.GITHUB
-    } else {
-        UpdateSourcePlatform.GITEA_FORGEJO
+    val platform = when {
+        host == "github.com" || host.endsWith(".github.com") -> UpdateSourcePlatform.GITHUB
+        host == "cnb.cool" || host.endsWith(".cnb.cool") -> UpdateSourcePlatform.CNB
+        else -> UpdateSourcePlatform.GITEA_FORGEJO
     }
     return ParsedUpdateSource(
         platform = platform,

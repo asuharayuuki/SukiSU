@@ -1087,14 +1087,15 @@
     <string name="update_sources_ping_hint">Ping 會測試 Release API 延遲，並抽樣測速 APK 下載速度。</string>
     <string name="update_sources_default_source">內建來源</string>
     <string name="update_sources_default_name">SukiSU 官方</string>
-    <string name="update_sources_neko_name">Neko 鏡像</string>
     <string name="update_sources_codeberg_name">Codeberg 鏡像</string>
+    <string name="update_sources_cnb_name">CNB 製品源</string>
     <string name="update_sources_custom_sources">自訂來源</string>
     <string name="update_sources_default_badge">內建</string>
     <string name="update_sources_pinned_badge">已固定</string>
     <string name="update_sources_empty">尚未新增自訂更新來源</string>
     <string name="update_sources_platform_github">GitHub · %1$s</string>
     <string name="update_sources_platform_gitea">Gitea / Forgejo · %1$s</string>
+    <string name="update_sources_platform_cnb">CNB · %1$s</string>
     <string name="update_sources_add">新增更新來源</string>
     <string name="update_sources_add_title">新增更新來源</string>
     <string name="update_sources_url">儲存庫位址</string>
@@ -1102,6 +1103,7 @@
     <string name="update_sources_name">名稱（選填）</string>
     <string name="update_sources_detected_github">已識別：GitHub · %1$s</string>
     <string name="update_sources_detected_gitea">已識別：Gitea / Forgejo · %1$s</string>
+    <string name="update_sources_detected_cnb">已識別：CNB · %1$s</string>
     <string name="update_sources_invalid_url">無法解析儲存庫位址，請貼上完整連結</string>
     <string name="update_sources_duplicate">此更新來源已存在</string>
     <string name="update_sources_limit">最多只能新增 %1$d 個自訂來源</string>
