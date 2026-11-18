@@ -147,7 +147,7 @@ jobs:
       - name: Upload kernelsu.ko artifact
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_artifact_put "aarch64-${KMI}-lkm" \
             "${GITHUB_WORKSPACE}/out/aarch64/${KMI}_kernelsu.ko"
 
@@ -239,7 +239,7 @@ jobs:
       - name: Upload x64 kernelsu.ko artifact
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_artifact_put "x86_64-${KMI}-lkm" \
             "${GITHUB_WORKSPACE}/out/x86_64/${KMI}_kernelsu.ko"
 
@@ -269,7 +269,7 @@ jobs:
       - name: Collect the kernel modules
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           rm -rf "$GITHUB_WORKSPACE/upload"
           mkdir -p "$GITHUB_WORKSPACE/upload"
           cp -a "$(ci_artifact_path "aarch64-${KMI}-lkm")" \
@@ -286,11 +286,6 @@ jobs:
           path: upload/aarch64-${{ inputs.kmi }}-lkm
           if-no-files-found: error
 
-      - name: Store the aarch64 module for LAN handoff
-        run: |
-          set -eux
-          . .github/scripts/ci/common.sh
-          ci_artifact_put "aarch64-${{ inputs.kmi }}-lkm" "upload/aarch64-${{ inputs.kmi }}-lkm"
 
 
       - name: Upload the x86_64 module
@@ -300,17 +295,12 @@ jobs:
           path: upload/x86_64-${{ inputs.kmi }}-lkm
           if-no-files-found: error
 
-      - name: Store the x86_64 module for LAN handoff
-        run: |
-          set -eux
-          . .github/scripts/ci/common.sh
-          ci_artifact_put "x86_64-${{ inputs.kmi }}-lkm" "upload/x86_64-${{ inputs.kmi }}-lkm"
 
 
       - name: Write the job summary
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_summary_artifacts "aarch64-${KMI}-lkm" "x86_64-${KMI}-lkm"
       - name: Release the parallelism slot
         if: always()

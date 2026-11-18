@@ -100,8 +100,8 @@ jobs:
           ARTIFACTS_RUN: ${{ inputs.artifacts_run }}
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
-          ci_download_artifact sukisu-manager apks/Manager "${ARTIFACTS_RUN:-}"
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
+          ci_download_artifact sukisu-manager "${GITHUB_WORKSPACE}/apks/Manager" "${ARTIFACTS_RUN:-}"
 
       - name: Prepare signing inputs
         if: ${{ inputs.publish }}
@@ -136,7 +136,7 @@ jobs:
         if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           test -n "$(find apks/split -type f -name '*.apk' -print -quit)"
           published="${CI_ARTIFACT_ROOT}/manager-ci/${GITHUB_SHA}"
           mkdir -p "$published"

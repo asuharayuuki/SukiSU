@@ -150,7 +150,7 @@ jobs:
       - name: Upload the zygisk payloads
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           for arch in aarch64 arm x86_64 riscv64; do
             # Pass the files, not the directory: ci_artifact_put would copy the
             # arch directory itself, so the artifact became
@@ -190,11 +190,6 @@ jobs:
           path: builtzygisk/aarch64
           if-no-files-found: error
 
-      - name: Store the aarch64 payload for LAN handoff
-        run: |
-          set -eux
-          . .github/scripts/ci/common.sh
-          ci_artifact_put builtzygisk-aarch64 builtzygisk/aarch64
 
 
       - name: Upload the arm payload
@@ -204,11 +199,6 @@ jobs:
           path: builtzygisk/arm
           if-no-files-found: error
 
-      - name: Store the arm payload for LAN handoff
-        run: |
-          set -eux
-          . .github/scripts/ci/common.sh
-          ci_artifact_put builtzygisk-arm builtzygisk/arm
 
 
       - name: Upload the x86_64 payload
@@ -218,11 +208,6 @@ jobs:
           path: builtzygisk/x86_64
           if-no-files-found: error
 
-      - name: Store the x86_64 payload for LAN handoff
-        run: |
-          set -eux
-          . .github/scripts/ci/common.sh
-          ci_artifact_put builtzygisk-x86_64 builtzygisk/x86_64
 
 
       - name: Upload the riscv64 payload
@@ -232,15 +217,10 @@ jobs:
           path: builtzygisk/riscv64
           if-no-files-found: error
 
-      - name: Store the riscv64 payload for LAN handoff
-        run: |
-          set -eux
-          . .github/scripts/ci/common.sh
-          ci_artifact_put builtzygisk-riscv64 builtzygisk/riscv64
 
 
       - name: Write the job summary
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_summary_artifacts "builtzygisk-aarch64" "builtzygisk-arm" "builtzygisk-x86_64" "builtzygisk-riscv64"

@@ -156,8 +156,8 @@ jobs:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
-          ci_download_all_artifacts artifacts
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
+          ci_download_all_artifacts "${GITHUB_WORKSPACE}/artifacts"
 
       - name: Pack the release files
         run: |
@@ -210,15 +210,15 @@ jobs:
       - name: Store the release bundle for LAN handoff
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
-          ci_artifact_put release release/
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
+          ci_artifact_put release "${GITHUB_WORKSPACE}/release/"
 
   # A tag push publishes a real release with every artifact attached: the kernel
   # modules, ksud, ksuinit and the manager APK. Without this the release only
   # existed on the runner host.      - name: Write the job summary
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_summary_artifacts "release"
 
   publish-release:
@@ -254,8 +254,8 @@ jobs:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
-          ci_download_artifact release release
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
+          ci_download_artifact release "${GITHUB_WORKSPACE}/release"
 
       - name: Upload the release assets
         if: github.ref_type == 'tag'

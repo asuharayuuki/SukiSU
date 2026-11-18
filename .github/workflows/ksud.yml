@@ -103,8 +103,8 @@ jobs:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
-          ci_download_all_artifacts artifacts
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
+          ci_download_all_artifacts "${GITHUB_WORKSPACE}/artifacts"
 
       - name: Prepare LKM files
         if: ${{ inputs.pack_lkm }}
@@ -176,7 +176,7 @@ jobs:
       - name: Upload ksud artifact
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_artifact_put "ksud-${{ matrix.target }}" \
             "target/${{ matrix.target }}/release/ksud"
 
@@ -187,17 +187,12 @@ jobs:
           path: target/${{ matrix.target }}/release/ksud
           if-no-files-found: error
 
-      - name: Store the ksud binary for LAN handoff
-        run: |
-          set -eux
-          . .github/scripts/ci/common.sh
-          ci_artifact_put "ksud-${{ matrix.target }}" "target/${{ matrix.target }}/release/ksud"
 
 
       - name: Write the job summary
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_summary_artifacts "ksud-${{ matrix.target }}"
       - name: Release the parallelism slot
         if: always()

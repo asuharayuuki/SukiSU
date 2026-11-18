@@ -180,8 +180,8 @@ jobs:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
-          ci_download_all_artifacts artifacts "${ARTIFACTS_RUN:-}"
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
+          ci_download_all_artifacts "${GITHUB_WORKSPACE}/artifacts" "${ARTIFACTS_RUN:-}"
 
       # --------------------------------------------------------
       # Copy ksud into Manager
@@ -323,8 +323,8 @@ jobs:
       - name: Store the Gradle APK for LAN handoff
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
-          ci_artifact_put "${{ steps.determine.outputs.title }}-gradle" manager/app/build/outputs/apk/release/*.apk
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
+          ci_artifact_put "${{ steps.determine.outputs.title }}-gradle" "${GITHUB_WORKSPACE}/manager/app/build/outputs/apk/release/"*.apk
 
       # --------------------------------------------------------
       # Upload mappings
@@ -421,8 +421,8 @@ jobs:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
-          ci_download_all_artifacts artifacts "${ARTIFACTS_RUN:-}"
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
+          ci_download_all_artifacts "${GITHUB_WORKSPACE}/artifacts" "${ARTIFACTS_RUN:-}"
 
       - name: Normalise the artifact layout
         run: |
@@ -553,7 +553,7 @@ jobs:
       - name: Upload build artifact
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_artifact_put "${{ steps.determine.outputs.title }}" \
             dist/*.apk
 
@@ -567,12 +567,12 @@ jobs:
       - name: Store the manager APK for local handoff
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
-          ci_artifact_put sukisu-manager dist/*.apk
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
+          ci_artifact_put sukisu-manager "${GITHUB_WORKSPACE}/dist/"*.apk
           python3 -c 'import json,os,sys; d=sys.argv[1]; f=sorted(x for x in os.listdir(d) if x != "manifest.json" and os.path.isfile(os.path.join(d,x))); json.dump({"files": f}, open(os.path.join(d,"manifest.json"),"w"))' "${CI_ARTIFACT_ROOT}/sukisu-manager"
 
       - name: Write the job summary
         run: |
           set -eux
-          . .github/scripts/ci/common.sh
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_summary_artifacts "sukisu-manager"
