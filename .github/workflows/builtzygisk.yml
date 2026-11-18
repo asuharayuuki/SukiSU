@@ -66,9 +66,12 @@ jobs:
           base="https://git.zako.shirkneko.top:20004/shirkneko"
 
           # The umbrella submodule first, then its own four dependencies.
+          # --remote follows the branch configured in .gitmodules (master), so
+          # SukiSU CI always builds the latest BuiltZygisk instead of a stale
+          # gitlink pin.
           git submodule set-url external/BuiltZygisk "$base/BuiltZygisk.git"
           git submodule sync -- external/BuiltZygisk
-          git submodule update --init external/BuiltZygisk
+          git submodule update --init --remote external/BuiltZygisk
 
           cd external/BuiltZygisk
           # Not --recursive: LSPlt carries a docs-only submodule we never build.
