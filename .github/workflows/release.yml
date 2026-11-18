@@ -251,16 +251,27 @@ jobs:
           BOT_TOKEN: ${{ vars.BOT_TOKEN || secrets.BOT_TOKEN }}
           CHAT_ID: ${{ vars.CHAT_ID || secrets.CHAT_ID }}
           TG_API_BASE: ${{ vars.TG_API_BASE || 'https://api.telegram.org' }}
+          TITLE: Release
+          BRANCH: ${{ github.ref_name }}
+          RUN_URL: https://git.zako.shirkneko.top:20004/${{ github.repository }}/actions/runs/${{ github.run_number }}
+          EVENT: ${{ toJson(github.event) }}
         run: |
           set -eu
           if [ -z "${CNB_TOKEN:-}" ]; then
             echo "CNB_TOKEN is not configured; skipping CNB Telegram trigger"
             exit 0
           fi
+          version="$(git rev-list --count HEAD 2>/dev/null || true)"
+          commit_text="$(git log -1 --format='%s by %an' 2>/dev/null | cut -c1-400)"
+          changes_url="$(printf '%s' "${EVENT:-}" | jq -r '.compare // .head_commit.url // empty' 2>/dev/null || true)"
+          telegram_script_b64="$(base64 -w0 scripts/upload-telegram.sh)"
           payload="$(jq -nc --arg tag "$CNB_TAG" --arg kind "$CNB_KIND" \
             --arg thread "$THREAD_ID" --arg bot "$BOT_TOKEN" --arg chat "$CHAT_ID" \
-            --arg api "$TG_API_BASE" \
-            '{event:"api_trigger_telegram",env:{TAG:$tag,KIND:$kind,THREAD_ID:$thread,TG_BOT_TOKEN:$bot,TG_CHAT_ID:$chat,TG_API_BASE:$api}}')"
+            --arg api "$TG_API_BASE" --arg title "$TITLE" --arg branch "$BRANCH" \
+            --arg version "$version" --arg commit "$commit_text" \
+            --arg run "$RUN_URL" --arg changes "$changes_url" \
+            --arg script "$telegram_script_b64" \
+            '{event:"api_trigger_telegram",env:{TAG:$tag,KIND:$kind,THREAD_ID:$thread,TG_BOT_TOKEN:$bot,TG_CHAT_ID:$chat,TG_API_BASE:$api,TITLE:$title,BRANCH:$branch,VERSION:$version,COMMIT_TEXT:$commit,RUN_URL:$run,CHANGES_URL:$changes,TELEGRAM_SCRIPT_B64:$script}}')"
           curl -fsS --retry 3 --retry-all-errors -X POST \
             -H "Authorization: Bearer ${CNB_TOKEN}" \
             -H 'Accept: application/json' \
