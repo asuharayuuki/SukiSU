@@ -15,6 +15,42 @@ data class HomeLoadState(
     val error: String? = null,
 )
 
+enum class UpdateStage {
+    DOWNLOADING,
+    VERIFYING,
+    INSTALLING,
+    COMPLETED,
+    AWAITING_USER,
+    FAILED,
+}
+
+/** Live state of a manager self-update, shown below the home status card. */
+@Immutable
+data class UpdateProgress(
+    val isCi: Boolean,
+    val stage: UpdateStage,
+    val downloadedBytes: Long = 0L,
+    val totalBytes: Long = 0L,
+    val bytesPerSecond: Long = 0L,
+    val error: String? = null,
+) {
+    val isRunning: Boolean
+        get() = stage == UpdateStage.DOWNLOADING ||
+            stage == UpdateStage.VERIFYING ||
+            stage == UpdateStage.INSTALLING
+
+    /** Non-failed progress suppresses the matching update prompt and blocks new installs. */
+    val isBlocking: Boolean
+        get() = stage != UpdateStage.FAILED
+
+    val percent: Int?
+        get() = if (totalBytes > 0L) {
+            ((downloadedBytes * 100) / totalBytes).toInt().coerceIn(0, 100)
+        } else {
+            null
+        }
+}
+
 @Immutable
 data class HomeUiState(
     val kernelVersion: KernelVersion,
@@ -38,6 +74,7 @@ data class HomeUiState(
     val checkCiUpdateEnabled: Boolean = false,
     val ciLatestVersionInfo: LatestVersionInfo = LatestVersionInfo(),
     val ciUpdateBusy: Boolean = false,
+    val updateProgress: UpdateProgress? = null,
     val showFullStatus: Boolean = true,
     val hideHomeWarnings: Boolean = false,
     // Root without a SukiSU kernel: pages are browsable but kernel features are unavailable.
@@ -125,6 +162,12 @@ data class HomeUiState(
 
     val hasUpdate: Boolean
         get() = latestVersionInfo.versionCode > currentManagerVersionCode
+
+    val showCiUpdatePrompt: Boolean
+        get() = updateProgress?.isBlocking != true
+
+    val showReleaseUpdatePrompt: Boolean
+        get() = updateProgress?.isBlocking != true
 }
 
 @Immutable

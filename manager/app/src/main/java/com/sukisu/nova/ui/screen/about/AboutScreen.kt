@@ -17,6 +17,7 @@ import com.sukisu.nova.R
 import com.sukisu.nova.ui.LocalUiMode
 import com.sukisu.nova.ui.UiMode
 import com.sukisu.nova.ui.navigation3.LocalNavigator
+import com.sukisu.nova.ui.navigation3.Route
 import com.sukisu.nova.ui.theme.Shapes
 import com.sukisu.nova.ui.theme.ThemeController
 import com.sukisu.nova.ui.theme.Typography
@@ -57,6 +58,7 @@ fun AboutScreen() {
         onSetCheckUpdate = viewModel::setCheckUpdate,
         onSetCheckCiUpdate = viewModel::setCheckCiUpdate,
         onSetCheckModuleUpdate = viewModel::setCheckModuleUpdate,
+        onOpenUpdateSources = { navigator.push(Route.UpdateSources) },
     )
 
     // The Material 3 Expressive page is shared by both skins; the Miuix skin has no Material theme above it.

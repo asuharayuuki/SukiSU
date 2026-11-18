@@ -95,6 +95,7 @@ import com.sukisu.nova.ui.navigation3.Navigator
 import com.sukisu.nova.ui.navigation3.Route
 import com.sukisu.nova.ui.navigation3.rememberNavigator
 import com.sukisu.nova.ui.screen.about.AboutScreen
+import com.sukisu.nova.ui.screen.updatesources.UpdateSourcesScreen
 import com.sukisu.nova.ai.api.AiFeatureBridge
 import com.sukisu.nova.ai.host.ManagerAiTarget
 import com.sukisu.nova.ui.screen.appicon.AppIconScreen
@@ -338,6 +339,9 @@ class MainActivity : ComponentActivity() {
                             }) {
                             entry<Route.Main>(swipeDismiss = swipeDismiss) { mainScreenEntry() }
                             entry<Route.About>(swipeDismiss = swipeDismiss) { AboutScreen() }
+                            entry<Route.UpdateSources>(swipeDismiss = swipeDismiss) {
+                                MaterialExpressivePalette { UpdateSourcesScreen() }
+                            }
                             entry<Route.Sulog>(swipeDismiss = swipeDismiss) { SulogScreen() }
                             entry<Route.ColorPalette>(swipeDismiss = swipeDismiss) { key -> ColorPaletteScreen(key.section, key.importUri) }
                             entry<Route.AppearanceOverlay>(swipeDismiss = swipeDismiss) {

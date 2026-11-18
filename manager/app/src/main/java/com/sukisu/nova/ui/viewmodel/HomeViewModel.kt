@@ -43,6 +43,8 @@ import com.sukisu.nova.ksuApp
 import com.sukisu.nova.ui.screen.home.HomeLoadState
 import com.sukisu.nova.ui.screen.home.HomeUiState
 import com.sukisu.nova.ui.screen.home.SystemInfo
+import com.sukisu.nova.ui.screen.home.UpdateProgress
+import com.sukisu.nova.ui.screen.home.UpdateStage
 import com.sukisu.nova.ui.screen.home.getHomeModuleCount
 import com.sukisu.nova.ui.screen.home.getManagerVersion
 import com.sukisu.nova.ui.util.checkNewCiVersion
@@ -154,7 +156,14 @@ class HomeViewModel(
 
     fun onResume(isCurrentPage: Boolean) {
         // Match the probe's lifetime, not saved UI state restored after process death.
-        if (hasResumed && isCurrentPage) refresh()
+        if (hasResumed && isCurrentPage) {
+            // Returning from the system installer without updating means the user
+            // cancelled; drop the "confirm installation" card so prompts can retry.
+            if (_uiState.value.content?.updateProgress?.stage == UpdateStage.AWAITING_USER) {
+                updateContent { it.copy(updateProgress = null) }
+            }
+            refresh()
+        }
         hasResumed = true
     }
 
@@ -172,7 +181,10 @@ class HomeViewModel(
                     val baseState = withContext(Dispatchers.IO) { buildState() }
                     _uiState.update { current ->
                         current.copy(
-                            content = baseState.copy(ciUpdateBusy = current.content?.ciUpdateBusy ?: false),
+                            content = baseState.copy(
+                                ciUpdateBusy = current.content?.ciUpdateBusy ?: false,
+                                updateProgress = current.content?.updateProgress,
+                            ),
                             isRefreshing = false,
                         )
                     }
@@ -210,14 +222,44 @@ class HomeViewModel(
         val content = _uiState.value.content ?: return
         val info = if (isCi) content.ciLatestVersionInfo else content.latestVersionInfo
         if (info.versionCode <= content.currentManagerVersionCode || info.downloadUrl.isBlank()) return
-        if (!settingsRepo.checkUpdate || (isCi && !settingsRepo.checkCiUpdate) || content.ciUpdateBusy) return
-        updateContent { it.copy(ciUpdateBusy = true) }
+        if (!settingsRepo.checkUpdate || (isCi && !settingsRepo.checkCiUpdate)) return
+        if (content.updateProgress?.isBlocking == true) return
+        updateContent {
+            it.copy(
+                ciUpdateBusy = true,
+                updateProgress = UpdateProgress(isCi = isCi, stage = UpdateStage.DOWNLOADING),
+            )
+        }
         viewModelScope.launch {
             try {
                 val installed = withContext(Dispatchers.IO) {
                     CiManagerUpdater(ksuApp).updateAndInstall(
                         info,
                         keepApk = !settingsRepo.autoDeleteUpdateApk,
+                        onStage = { stage ->
+                            val uiStage = when (stage) {
+                                CiManagerUpdater.Stage.DOWNLOADING -> UpdateStage.DOWNLOADING
+                                CiManagerUpdater.Stage.VERIFYING -> UpdateStage.VERIFYING
+                                CiManagerUpdater.Stage.INSTALLING -> UpdateStage.INSTALLING
+                            }
+                            updateProgress { it.copy(stage = uiStage) }
+                        },
+                        onProgress = { downloadedBytes, totalBytes, bytesPerSecond ->
+                            updateProgress {
+                                it.copy(
+                                    stage = UpdateStage.DOWNLOADING,
+                                    downloadedBytes = downloadedBytes,
+                                    totalBytes = totalBytes,
+                                    bytesPerSecond = bytesPerSecond,
+                                )
+                            }
+                        },
+                    )
+                }
+                updateProgress {
+                    it.copy(
+                        stage = if (installed) UpdateStage.COMPLETED else UpdateStage.AWAITING_USER,
+                        bytesPerSecond = 0L,
                     )
                 }
                 val message = if (installed) R.string.ci_update_install_success
@@ -226,10 +268,23 @@ class HomeViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                updateProgress {
+                    it.copy(
+                        stage = UpdateStage.FAILED,
+                        bytesPerSecond = 0L,
+                        error = e.message ?: ksuApp.getString(R.string.ci_update_download_failed),
+                    )
+                }
                 android.widget.Toast.makeText(ksuApp, e.message ?: ksuApp.getString(R.string.ci_update_download_failed), android.widget.Toast.LENGTH_LONG).show()
             } finally {
                 updateContent { it.copy(ciUpdateBusy = false) }
             }
+        }
+    }
+
+    private fun updateProgress(transform: (UpdateProgress) -> UpdateProgress) {
+        updateContent { state ->
+            state.updateProgress?.let { state.copy(updateProgress = transform(it)) } ?: state
         }
     }
 

@@ -80,6 +80,10 @@ interface SettingsRepository {
     var checkUpdate: Boolean
     var checkCiUpdate: Boolean
     var checkModuleUpdate: Boolean
+    /** Extra release repositories checked besides [com.sukisu.nova.data.update.UpdateSourceDefaults.DEFAULT]. */
+    var updateSources: List<com.sukisu.nova.data.update.UpdateSourceConfig>
+    /** Empty means automatic (lowest-latency) selection; otherwise the pinned source id. */
+    var pinnedUpdateSourceId: String
     var autoDeleteModuleZip: Boolean
     /** When enabled, a manager self-update installs without keeping the APK in Downloads. */
     var autoDeleteUpdateApk: Boolean

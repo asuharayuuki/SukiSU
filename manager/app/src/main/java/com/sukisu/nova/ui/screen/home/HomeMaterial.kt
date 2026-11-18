@@ -1,11 +1,13 @@
 package com.sukisu.nova.ui.screen.home
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -28,6 +30,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.VolunteerActivism
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Warning
@@ -37,6 +42,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import com.sukisu.nova.ui.component.Storefront
 import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -47,6 +54,7 @@ import androidx.compose.material3.contentColorFor
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -125,6 +133,7 @@ fun HomePagerMaterial(
                 state = state,
                 actions = actions,
             )
+            UpdateProgressCard(state)
             if (state.showVersionMismatchWarning) {
                 WarningCard(
                     customText(CustomTextKey.HOME_WARN_VERSION_SPOOF),
@@ -194,13 +203,15 @@ private fun UpdateCard(
     val ciTitle = customText(CustomTextKey.HOME_UPDATE_NEW_VERSION, ciInfo.versionCode)
     val ciConfirm = stringResource(R.string.module_update)
     val ciContent = ciInfo.changelog
-    if (state.checkCiUpdateEnabled && ciInfo.versionCode > state.currentManagerVersionCode) {
+    if (state.checkCiUpdateEnabled && ciInfo.versionCode > state.currentManagerVersionCode &&
+        state.showCiUpdatePrompt
+    ) {
         WarningCard(
-            message = if (state.ciUpdateBusy) customText(CustomTextKey.HOME_CI_UPDATE_BUSY)
-            else customText(CustomTextKey.HOME_CI_UPDATE_AVAILABLE, ciInfo.versionCode),
+            message = customText(CustomTextKey.HOME_CI_UPDATE_AVAILABLE, ciInfo.versionCode),
             level = WarningLevel.Notice,
             onClick = {
-                if (!state.ciUpdateBusy) ciDialog.showConfirm(
+                if (state.updateProgress?.isBlocking == true) return@WarningCard
+                ciDialog.showConfirm(
                     title = ciTitle, content = ciContent, confirm = ciConfirm, markdown = true,
                 )
             },
@@ -211,7 +222,7 @@ private fun UpdateCard(
     val updateText = stringResource(id = R.string.module_update)
 
     AnimatedVisibility(
-        visible = state.hasUpdate,
+        visible = state.hasUpdate && state.showReleaseUpdatePrompt,
         enter = fadeIn() + expandVertically(),
         exit = shrinkVertically() + fadeOut()
     ) {
@@ -220,7 +231,7 @@ private fun UpdateCard(
             message = customText(CustomTextKey.HOME_UPDATE_NEW_VERSION, newVersion.versionCode),
             level = WarningLevel.Notice
         ) {
-            if (state.ciUpdateBusy) return@WarningCard
+            if (state.updateProgress?.isBlocking == true) return@WarningCard
             if (newVersion.changelog.isEmpty()) {
                 actions.onReleaseUpdateClick()
             } else {
@@ -230,6 +241,90 @@ private fun UpdateCard(
                     markdown = true,
                     confirm = updateText
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Live self-update card under the status hero. It replaces the update prompt
+ * while a download runs, then switches to install/restart wording. MD3
+ * Expressive: tonal surface, extra-large shape, wavy determinate progress and
+ * the expressive loading indicator when the size is unknown.
+ */
+@Composable
+private fun UpdateProgressCard(state: HomeUiState) {
+    val progress = state.updateProgress ?: return
+    val failed = progress.stage == UpdateStage.FAILED
+    val settled = progress.stage == UpdateStage.COMPLETED ||
+        progress.stage == UpdateStage.AWAITING_USER
+    val containerColor = when {
+        failed -> MaterialTheme.colorScheme.errorContainer
+        settled -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surfaceBright
+    }
+    val contentColor = contentColorFor(containerColor)
+
+    TonalCard(
+        modifier = Modifier.fillMaxWidth(),
+        containerColor = containerColor,
+        contentColor = contentColor,
+        shape = MaterialTheme.shapes.extraLarge,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = updateProgressTitle(progress),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    updateProgressDetail(progress)?.let { detail ->
+                        Text(
+                            text = detail,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = contentColor.copy(alpha = 0.75f),
+                        )
+                    }
+                }
+                Icon(
+                    imageVector = when {
+                        failed -> Icons.Default.Error
+                        settled -> Icons.Default.CheckCircle
+                        else -> Icons.Default.Download
+                    },
+                    contentDescription = null,
+                )
+            }
+            when {
+                progress.stage == UpdateStage.DOWNLOADING && progress.percent != null -> {
+                    val animatedProgress by animateFloatAsState(
+                        targetValue = (progress.percent ?: 0) / 100f,
+                        label = "UpdateDownloadProgress",
+                    )
+                    LinearWavyProgressIndicator(
+                        progress = { animatedProgress },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = contentColor.copy(alpha = 0.2f),
+                    )
+                }
+
+                progress.isRunning -> Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    LoadingIndicator()
+                }
             }
         }
     }

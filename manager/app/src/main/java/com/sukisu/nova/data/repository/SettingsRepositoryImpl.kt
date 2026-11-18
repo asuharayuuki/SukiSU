@@ -11,6 +11,8 @@ import com.materialkolor.PaletteStyle
 import com.materialkolor.dynamiccolor.ColorSpec
 import com.topjohnwu.superuser.ShellUtils
 import com.sukisu.nova.Natives
+import com.sukisu.nova.data.update.UpdateSourceConfig
+import com.sukisu.nova.data.update.UpdateSourceDefaults
 import com.sukisu.nova.ksuApp
 import com.sukisu.nova.magica.BootCompletedReceiver
 import com.sukisu.nova.ui.UiMode
@@ -32,6 +34,8 @@ private const val SETTINGS_PREFS = "settings"
 private const val KEY_USE_SOFT_REBOOT = "soft_reboot"
 private const val KEY_AUTO_DELETE_MODULE_ZIP = "auto_delete_module_zip"
 private const val KEY_AUTO_DELETE_UPDATE_APK = "auto_delete_update_apk"
+private const val KEY_UPDATE_SOURCES = "update_sources"
+private const val KEY_PINNED_UPDATE_SOURCE = "pinned_update_source_id"
 internal const val KEY_CUSTOM_HOME_TITLE = "custom_home_title"
 internal const val KEY_CUSTOM_TEXTS = "custom_texts"
 internal const val KEY_HOME_CARD_IMAGE_PATH = "home_card_image_path"
@@ -346,6 +350,38 @@ class SettingsRepositoryImpl : SettingsRepository {
     override var checkCiUpdate: Boolean
         get() = prefs.getBoolean("check_ci_update", false)
         set(value) = prefs.edit { putBoolean("check_ci_update", value) }
+
+    override var updateSources: List<UpdateSourceConfig>
+        get() {
+            val raw = prefs.getString(KEY_UPDATE_SOURCES, null) ?: return emptyList()
+            return runCatching {
+                Json.decodeFromString<List<UpdateSourceConfig>>(raw)
+            }.getOrDefault(emptyList())
+                .filter {
+                    it.id.isNotBlank() && !UpdateSourceDefaults.isBuiltinId(it.id) &&
+                        it.baseUrl.isNotBlank() && it.owner.isNotBlank() && it.repo.isNotBlank()
+                }
+                .distinctBy { source ->
+                    "${source.baseUrl.lowercase()}/${source.owner.lowercase()}/${source.repo.lowercase()}"
+                }
+                .take(UpdateSourceDefaults.MAX_CUSTOM_SOURCES)
+        }
+        set(value) {
+            val cleaned = value
+                .filter {
+                    it.id.isNotBlank() && !UpdateSourceDefaults.isBuiltinId(it.id) &&
+                        it.baseUrl.isNotBlank() && it.owner.isNotBlank() && it.repo.isNotBlank()
+                }
+                .distinctBy { source ->
+                    "${source.baseUrl.lowercase()}/${source.owner.lowercase()}/${source.repo.lowercase()}"
+                }
+                .take(UpdateSourceDefaults.MAX_CUSTOM_SOURCES)
+            prefs.edit { putString(KEY_UPDATE_SOURCES, Json.encodeToString(cleaned)) }
+        }
+
+    override var pinnedUpdateSourceId: String
+        get() = prefs.getString(KEY_PINNED_UPDATE_SOURCE, "") ?: ""
+        set(value) = prefs.edit { putString(KEY_PINNED_UPDATE_SOURCE, value.trim()) }
 
     override var checkModuleUpdate: Boolean
         get() = prefs.getBoolean("module_check_update", true)
