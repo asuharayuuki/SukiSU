@@ -83,8 +83,9 @@ interface SettingsRepository {
     /** Extra release repositories checked besides the built-in sources. */
     var updateSources: List<com.sukisu.nova.data.update.UpdateSourceConfig>
     /**
-     * Pinned source id, or empty for automatic (lowest-latency) selection.
-     * Defaults to the CNB source until the user pins or unpins a source.
+     * Pinned source id. An unset preference defaults to the CNB source;
+     * an explicitly unpinned value is empty and means automatic
+     * (lowest-latency) selection.
      */
     var pinnedUpdateSourceId: String
     var autoDeleteModuleZip: Boolean

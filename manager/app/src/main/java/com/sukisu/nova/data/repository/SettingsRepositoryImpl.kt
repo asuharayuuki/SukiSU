@@ -36,6 +36,9 @@ private const val KEY_AUTO_DELETE_MODULE_ZIP = "auto_delete_module_zip"
 private const val KEY_AUTO_DELETE_UPDATE_APK = "auto_delete_update_apk"
 private const val KEY_UPDATE_SOURCES = "update_sources"
 private const val KEY_PINNED_UPDATE_SOURCE = "pinned_update_source_id"
+
+/** Stored pin value meaning "explicitly automatic", as opposed to "never configured". */
+private const val PIN_AUTO = "auto"
 internal const val KEY_CUSTOM_HOME_TITLE = "custom_home_title"
 internal const val KEY_CUSTOM_TEXTS = "custom_texts"
 internal const val KEY_HOME_CARD_IMAGE_PATH = "home_card_image_path"
@@ -380,9 +383,17 @@ class SettingsRepositoryImpl : SettingsRepository {
         }
 
     override var pinnedUpdateSourceId: String
-        // CNB is the default preferred source until the user pins or unpins one.
-        get() = prefs.getString(KEY_PINNED_UPDATE_SOURCE, UpdateSourceDefaults.CNB_ID) ?: ""
-        set(value) = prefs.edit { putString(KEY_PINNED_UPDATE_SOURCE, value.trim()) }
+        // Explicit automatic selection stored by unpinning; distinct from "unset".
+        get() = when (val raw = prefs.getString(KEY_PINNED_UPDATE_SOURCE, null)) {
+            null -> UpdateSourceDefaults.CNB_ID
+            PIN_AUTO -> ""
+            // Legacy builds stored an empty string for "no pin"; treat that as
+            // default preference so CNB is still preferred after upgrading.
+            else -> raw.ifBlank { UpdateSourceDefaults.CNB_ID }
+        }
+        set(value) = prefs.edit {
+            putString(KEY_PINNED_UPDATE_SOURCE, value.trim().ifBlank { PIN_AUTO })
+        }
 
     override var checkModuleUpdate: Boolean
         get() = prefs.getBoolean("module_check_update", true)
