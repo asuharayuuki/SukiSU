@@ -117,6 +117,12 @@ jobs:
           fi
           if [ "$RELEASE_BUILD" = "true" ]; then
             set -- "$@" "KSU_BUILD_REF=release"
+          else
+            # The checkout is detached; tell Kbuild which ref this run is for.
+            build_ref="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+            if [ -n "$build_ref" ] && [ "$build_ref" != HEAD ]; then
+              set -- "$@" "KSU_BUILD_REF=$build_ref"
+            fi
           fi
           if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
             set -- "$@" "KSU_IS_PR_BUILD=1"
@@ -198,6 +204,12 @@ jobs:
           fi
           if [ "$RELEASE_BUILD" = "true" ]; then
             set -- "$@" "KSU_BUILD_REF=release"
+          else
+            # The checkout is detached; tell Kbuild which ref this run is for.
+            build_ref="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+            if [ -n "$build_ref" ] && [ "$build_ref" != HEAD ]; then
+              set -- "$@" "KSU_BUILD_REF=$build_ref"
+            fi
           fi
           if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
             set -- "$@" "KSU_IS_PR_BUILD=1"
