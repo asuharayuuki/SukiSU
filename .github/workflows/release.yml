@@ -215,7 +215,8 @@ jobs:
 
   # A tag push publishes a real release with every artifact attached: the kernel
   # modules, ksud, ksuinit and the manager APK. Without this the release only
-  # existed on the runner host.      - name: Write the job summary
+  # existed on the runner host.
+      - name: Write the job summary
         run: |
           set -eux
           . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
