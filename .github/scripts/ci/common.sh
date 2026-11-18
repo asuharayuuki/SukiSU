@@ -61,9 +61,39 @@ ci_artifact_put() {
 			echo "artifact source missing: $src" >&2
 			return 1
 		fi
-		cp -a "$src" "$dest"/
+		# Match upload-artifact: a directory contributes its contents, not
+		# the directory itself.
+		if [ -d "$src" ]; then
+			cp -a "$src"/. "$dest"/
+		else
+			cp -a "$src" "$dest"/
+		fi
 	done
+	ci_artifact_manifest "$dest"
 	echo "stored artifact ${name} in ${dest}"
+}
+
+# ci_artifact_manifest DIR
+#   Writes the file list consumed by the LAN peer downloader.
+ci_artifact_manifest() {
+	local dir="$1"
+	local files escaped first
+	files="$(cd "$dir" && find . -type f ! -name manifest.json | sed 's#^\./##' | sort)"
+	{
+		printf '{"files":['
+		first=1
+		printf '%s\n' "$files" | while IFS= read -r file; do
+			[ -n "$file" ] || continue
+			if [ "$first" = 1 ]; then
+				first=0
+			else
+				printf ','
+			fi
+			escaped="$(printf '%s' "$file" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+			printf '"%s"' "$escaped"
+		done
+		printf ']}'
+	} > "$dir/manifest.json"
 }
 
 # ci_artifact_get NAME DEST
@@ -124,6 +154,7 @@ ci_download_artifact() {
 				break
 				;;
 			esac
+			mkdir -p "$(dirname "${dest}/${file}")"
 			if ! curl -fL --retry 3 --progress-bar \
 				"http://${host}:18080/${run_id}/${name}/${file}" \
 				-o "${dest}/${file}"; then
@@ -172,6 +203,37 @@ ci_download_artifact() {
 	unzip -q -o "$zip" -d "$dest"
 	rm -f "$zip"
 	echo "artifact ${name} downloaded"
+}
+
+# ci_download_all_artifacts DEST [RUN_ID]
+#   Mirrors download-artifact without a name: one directory per artifact.
+ci_download_all_artifacts() {
+	local dest="$1"
+	local run_id="${2:-${GITHUB_RUN_ID:-0}}"
+	local token="${TOKEN:-${GITHUB_TOKEN:-}}"
+	[ -n "$token" ] || {
+		echo "missing GITHUB_TOKEN for artifact list" >&2
+		return 1
+	}
+	local site="${CI_ARTIFACT_BASE:-http://100.0.0.11:3000}"
+	local api="${site}/api/v1/repos/${GITHUB_REPOSITORY}"
+	if ! curl -fsS --max-time 4 "${site}/api/v1/version" >/dev/null 2>&1; then
+		site="${FORGEJO_PUBLIC_URL:-https://git.zako.shirkneko.top:20004}"
+		api="${site}/api/v1/repos/${GITHUB_REPOSITORY}"
+	fi
+	local json names name
+	json="$(curl -fsS --max-time 30 -H "Authorization: token ${token}" \
+		"${api}/actions/artifacts?limit=100")"
+	names="$(printf '%s' "$json" | jq -r --argjson rid "${run_id:-0}" \
+		'.[] | select(.expired == false) | select($rid == 0 or .run_id == $rid) | .name' | sort -u)"
+	[ -n "$names" ] || {
+		echo "no artifacts found for run ${run_id}" >&2
+		return 1
+	}
+	mkdir -p "$dest"
+	for name in $names; do
+		ci_download_artifact "$name" "$dest/$name" "$run_id"
+	done
 }
 
 # ci_summary_artifacts NAME...

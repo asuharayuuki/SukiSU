@@ -286,12 +286,26 @@ jobs:
           path: upload/aarch64-${{ inputs.kmi }}-lkm
           if-no-files-found: error
 
+      - name: Store the aarch64 module for LAN handoff
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_artifact_put "aarch64-${{ inputs.kmi }}-lkm" "upload/aarch64-${{ inputs.kmi }}-lkm"
+
+
       - name: Upload the x86_64 module
         uses: ./.ci-actions/upload-artifact
         with:
           name: x86_64-${{ inputs.kmi }}-lkm
           path: upload/x86_64-${{ inputs.kmi }}-lkm
           if-no-files-found: error
+
+      - name: Store the x86_64 module for LAN handoff
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_artifact_put "x86_64-${{ inputs.kmi }}-lkm" "upload/x86_64-${{ inputs.kmi }}-lkm"
+
 
       - name: Write the job summary
         run: |

@@ -190,12 +190,26 @@ jobs:
           path: builtzygisk/aarch64
           if-no-files-found: error
 
+      - name: Store the aarch64 payload for LAN handoff
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_artifact_put builtzygisk-aarch64 builtzygisk/aarch64
+
+
       - name: Upload the arm payload
         uses: ./.ci-actions/upload-artifact
         with:
           name: builtzygisk-arm
           path: builtzygisk/arm
           if-no-files-found: error
+
+      - name: Store the arm payload for LAN handoff
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_artifact_put builtzygisk-arm builtzygisk/arm
+
 
       - name: Upload the x86_64 payload
         uses: ./.ci-actions/upload-artifact
@@ -204,12 +218,26 @@ jobs:
           path: builtzygisk/x86_64
           if-no-files-found: error
 
+      - name: Store the x86_64 payload for LAN handoff
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_artifact_put builtzygisk-x86_64 builtzygisk/x86_64
+
+
       - name: Upload the riscv64 payload
         uses: ./.ci-actions/upload-artifact
         with:
           name: builtzygisk-riscv64
           path: builtzygisk/riscv64
           if-no-files-found: error
+
+      - name: Store the riscv64 payload for LAN handoff
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_artifact_put builtzygisk-riscv64 builtzygisk/riscv64
+
 
       - name: Write the job summary
         run: |

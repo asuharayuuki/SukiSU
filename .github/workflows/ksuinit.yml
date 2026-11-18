@@ -135,6 +135,13 @@ jobs:
           path: target/aarch64-linux-android/release/ksuinit
           if-no-files-found: error
 
+      - name: Store the ksuinit (aarch64) for LAN handoff
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_artifact_put ksuinit-aarch64 target/aarch64-linux-android/release/ksuinit
+
+
       - name: Upload ksuinit (arm)
         uses: ./.ci-actions/upload-artifact
         with:
@@ -142,12 +149,26 @@ jobs:
           path: target/armv7-linux-androideabi/release/ksuinit
           if-no-files-found: error
 
+      - name: Store the ksuinit (arm) for LAN handoff
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_artifact_put ksuinit-arm target/armv7-linux-androideabi/release/ksuinit
+
+
       - name: Upload ksuinit (x86_64)
         uses: ./.ci-actions/upload-artifact
         with:
           name: ksuinit-x86_64
           path: target/x86_64-linux-android/release/ksuinit
           if-no-files-found: error
+
+      - name: Store the ksuinit (x86_64) for LAN handoff
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_artifact_put ksuinit-x86_64 target/x86_64-linux-android/release/ksuinit
+
       - name: Write the job summary
         run: |
           set -eux
@@ -242,6 +263,13 @@ jobs:
           name: ksuinit-riscv64
           path: target/riscv64-linux-android/release/ksuinit
           if-no-files-found: error
+
+      - name: Store the ksuinit (riscv64) for LAN handoff
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_artifact_put ksuinit-riscv64 target/riscv64-linux-android/release/ksuinit
+
 
       - name: Write the job summary
         run: |

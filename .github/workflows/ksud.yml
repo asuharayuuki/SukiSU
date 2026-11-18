@@ -185,6 +185,13 @@ jobs:
           path: target/${{ matrix.target }}/release/ksud
           if-no-files-found: error
 
+      - name: Store the ksud binary for LAN handoff
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_artifact_put "ksud-${{ matrix.target }}" "target/${{ matrix.target }}/release/ksud"
+
+
       - name: Write the job summary
         run: |
           set -eux
