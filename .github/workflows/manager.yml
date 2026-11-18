@@ -584,6 +584,12 @@ jobs:
           path: dist/*.apk
           if-no-files-found: error
 
+      - name: Store the manager APK for local handoff
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_artifact_put sukisu-manager dist/*.apk
+
       - name: Write the job summary
         run: |
           set -eux

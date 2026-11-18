@@ -85,6 +85,59 @@ ci_artifact_exists() {
 	[ -d "$(ci_artifact_path "$1")" ]
 }
 
+# ci_download_artifact NAME DEST [RUN_ID]
+#   Prefer the per-run copy on the shared /ci volume (fast when the producing
+#   and consuming jobs land on the same runner). Otherwise fetch the artifact
+#   zip through the Forgejo API, with curl's byte progress instead of the
+#   download-artifact action's file-count progress.
+ci_download_artifact() {
+	local name="$1"
+	local dest="$2"
+	local run_id="${3:-${GITHUB_RUN_ID:-0}}"
+	mkdir -p "$dest"
+
+	local local_root="/ci/runs/${run_id}/${name}"
+	if [ -d "$local_root" ]; then
+		cp -a "$local_root"/. "$dest"/
+		echo "artifact ${name} copied from ${local_root}"
+		return 0
+	fi
+
+	local token="${TOKEN:-${GITHUB_TOKEN:-}}"
+	[ -n "$token" ] || {
+		echo "artifact ${name}: missing GITHUB_TOKEN for API download" >&2
+		return 1
+	}
+	# Artifact traffic goes over EasyTier when the runner can reach the mesh;
+	# fall back to the public endpoint for hosts outside it.
+	local site="${CI_ARTIFACT_BASE:-http://100.0.0.11:3000}"
+	local api="${site}/api/v1/repos/${GITHUB_REPOSITORY}"
+	local json
+	if ! curl -fsS --max-time 4 "${site}/api/v1/version" >/dev/null 2>&1; then
+		site="${FORGEJO_PUBLIC_URL:-https://git.zako.shirkneko.top:20004}"
+		api="${site}/api/v1/repos/${GITHUB_REPOSITORY}"
+	fi
+	json="$(curl -fsS --max-time 30 -H "Authorization: token ${token}" \
+		"${api}/actions/artifacts?name=${name}&limit=100")"
+	local id
+	id="$(printf '%s' "$json" | jq -r --argjson rid "${run_id:-0}" \
+		'[.[] | select(.expired == false) | select($rid == 0 or .run_id == $rid)] | sort_by(.id) | last | .id // empty')"
+	[ -n "$id" ] || {
+		echo "artifact ${name} not found for run ${run_id}" >&2
+		return 1
+	}
+	# Build the zip URL on the same base: archive_download_url points at the
+	# public host and would bypass EasyTier.
+	local url="${api}/actions/artifacts/${id}/zip"
+	local zip
+	zip="$(mktemp)"
+	curl -fL --retry 5 --retry-all-errors --progress-bar \
+		-H "Authorization: token ${token}" -o "$zip" "$url"
+	unzip -q -o "$zip" -d "$dest"
+	rm -f "$zip"
+	echo "artifact ${name} downloaded"
+}
+
 # ci_summary_artifacts NAME...
 #   Job Summary: rendered above the job log by Forgejo. One row per artifact with
 #   the download link (Forgejo serves artifacts at /actions/runs/<run_number>/artifacts/<name>).

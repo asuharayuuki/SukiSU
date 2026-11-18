@@ -94,27 +94,14 @@ jobs:
             cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
           done
       - name: Download APKs
-        if: ${{ inputs.publish && inputs.artifacts_run == '' }}
-        uses: ./.ci-actions/download-artifact
-        with:
-          name: sukisu-manager
-          path: apks/Manager
-
-      # Explicit artifacts_run (manual dispatch) still reads /ci, because
-      # Forgejo cannot serve artifacts across runs yet.
-      - name: Download APKs from another run
-        if: ${{ inputs.publish && inputs.artifacts_run != '' }}
+        if: ${{ inputs.publish }}
         env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ARTIFACTS_RUN: ${{ inputs.artifacts_run }}
         run: |
           set -eux
           . .github/scripts/ci/common.sh
-          if [ ! -d "${CI_ARTIFACT_ROOT}/Manager" ]; then
-            # This run has not written anything yet, so its root does not exist.
-            mkdir -p "${CI_ARTIFACT_ROOT}"
-            cp -a "/ci/runs/${ARTIFACTS_RUN}"/* "${CI_ARTIFACT_ROOT}/"
-          fi
-          ci_artifact_get Manager apks/Manager
+          ci_download_artifact sukisu-manager apks/Manager "${ARTIFACTS_RUN:-}"
 
       - name: Prepare signing inputs
         if: ${{ inputs.publish }}
