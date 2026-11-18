@@ -3,6 +3,7 @@ package com.sukisu.nova.ui.util
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.os.Parcelable
 import android.os.SystemClock
@@ -815,11 +816,19 @@ internal val KNOWN_BLOCKABLE_MODULES = listOf(
     "vr", "vklp", "oplus_secure_guard", "oplus_secure_guard_new", "mkp"
 )
 
-// Return the known anti-root modules currently loaded on this device (per
-// /proc/modules), so the install screen can pre-fill only the relevant ones.
-// Modules other modules use are left out: blocking one keeps its users from
-// loading as well, so ksuinit refuses to block it in first stage anyway.
+// The module worth pre-filling on this vendor's devices; nothing for others.
+private fun vendorDefaultBlockModule(): String? = when (Build.MANUFACTURER.lowercase()) {
+    "oneplus" -> "oplus_secure_guard_new"
+    "vivo" -> "vr"
+    else -> null
+}
+
+// Return the vendor's default anti-root module if it is currently loaded on
+// this device (per /proc/modules), so the install screen pre-fills only that
+// one. A module other modules use is left out: blocking it keeps its users
+// from loading as well, so ksuinit refuses to block it in first stage anyway.
 suspend fun getLoadedBlockableModules(): List<String> = withContext(Dispatchers.IO) {
+    val default = vendorDefaultBlockModule() ?: return@withContext emptyList()
     val shell = getRootShell()
     val out = shell.newJob().add("cat /proc/modules").to(ArrayList(), null).exec().out
     // <name> <size> <refcount> <used by, or "-"> <state> <address>
@@ -827,7 +836,7 @@ suspend fun getLoadedBlockableModules(): List<String> = withContext(Dispatchers.
         val fields = line.trim().split(Regex("\\s+"))
         fields.getOrNull(0)?.takeIf { fields.getOrNull(3) == "-" }
     }.toHashSet()
-    KNOWN_BLOCKABLE_MODULES.filter { it in unused }
+    listOf(default).filter { it in unused }
 }
 
 private fun installBootWithKpm(

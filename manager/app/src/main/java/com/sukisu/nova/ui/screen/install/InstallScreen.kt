@@ -26,6 +26,8 @@ import com.sukisu.nova.ui.UiMode
 import com.sukisu.nova.ui.component.choosekmidialog.ChooseKmiDialog
 import com.sukisu.nova.ui.kernelFlash.KpmPatchOption
 import com.sukisu.nova.ui.kernelFlash.component.SlotSelectionDialog
+import com.sukisu.nova.ui.component.dialog.ConfirmResult
+import com.sukisu.nova.ui.component.dialog.rememberConfirmDialog
 import com.sukisu.nova.ui.component.dialog.rememberLoadingDialog
 import com.sukisu.nova.ui.kernelFlash.rememberAnyKernel3State
 import com.sukisu.nova.ui.navigation3.LocalNavigator
@@ -37,7 +39,9 @@ import com.sukisu.nova.ui.util.getAvailablePartitions
 import com.sukisu.nova.ui.util.getCurrentKmi
 import com.sukisu.nova.ui.util.getDefaultPartition
 import com.sukisu.nova.ui.util.getLoadedBlockableModules
+import com.sukisu.nova.ui.util.KNOWN_BLOCKABLE_MODULES
 import com.sukisu.nova.ui.util.isBlockModulesValid
+import com.sukisu.nova.ui.util.parseBlockModules
 import com.sukisu.nova.ui.util.getSlotSuffix
 import com.sukisu.nova.ui.util.isAbDevice
 import android.net.Uri
@@ -61,6 +65,7 @@ fun InstallScreen(
     val resources = LocalResources.current
     var probeJob by remember { mutableStateOf<Job?>(null) }
     val loadingDialog = rememberLoadingDialog()
+    val confirmDialog = rememberConfirmDialog()
 
     val installMethodState = rememberSaveable { mutableStateOf<InstallMethod?>(null) }
     var installMethod by installMethodState
@@ -204,7 +209,7 @@ fun InstallScreen(
     }
 
     val blockModulesInvalidMessage = stringResource(R.string.install_block_modules_invalid)
-    val onInstall = {
+    val doInstall: () -> Unit = {
         if (isStandaloneKpm) {
             navigator.push(Route.Flash(FlashIt.PatchKpmBoot(boot = kpmBootUri, undo = kpmUndo)))
         } else if (!isBlockModulesValid(effectiveBlockModules)) {
@@ -265,6 +270,30 @@ fun InstallScreen(
                         )
                     )
                 }
+            }
+        }
+    }
+
+    val onInstall: () -> Unit = {
+        val unknownModules = if (isStandaloneKpm || !isBlockModulesValid(effectiveBlockModules)) {
+            emptyList()
+        } else {
+            parseBlockModules(effectiveBlockModules).filter { it !in KNOWN_BLOCKABLE_MODULES }
+        }
+        if (unknownModules.isEmpty()) {
+            doInstall()
+        } else {
+            scope.launch {
+                val result = confirmDialog.awaitConfirm(
+                    title = resources.getString(R.string.install_block_modules_unknown_title),
+                    content = resources.getString(
+                        R.string.install_block_modules_unknown_content,
+                        unknownModules.joinToString(", ")
+                    ),
+                    confirm = resources.getString(R.string.confirm),
+                    dismiss = resources.getString(R.string.cancel)
+                )
+                if (result == ConfirmResult.Confirmed) doInstall()
             }
         }
     }
