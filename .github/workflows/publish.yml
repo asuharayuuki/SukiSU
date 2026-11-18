@@ -11,6 +11,11 @@ on:
         required: false
         default: ''
         type: string
+      publish:
+        description: 'Sign and publish the APKs (disable for pull requests)'
+        required: false
+        default: true
+        type: boolean
   workflow_call:
     inputs:
       artifacts_run:
@@ -18,6 +23,11 @@ on:
         required: false
         default: ''
         type: string
+      publish:
+        description: 'Sign and publish the APKs (disable for pull requests)'
+        required: false
+        default: true
+        type: boolean
       release_upload:
         description: 'Upload to the releases Telegram thread'
         required: false
@@ -26,6 +36,7 @@ on:
 
 jobs:
   publish:
+    if: ${{ inputs.publish }}
     runs-on: android
     steps:
       - name: Checkout
@@ -83,7 +94,7 @@ jobs:
             cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
           done
       - name: Download APKs
-        if: ${{ inputs.artifacts_run == '' }}
+        if: ${{ inputs.publish && inputs.artifacts_run == '' }}
         uses: ./.ci-actions/download-artifact
         with:
           name: sukisu-manager
@@ -92,7 +103,7 @@ jobs:
       # Explicit artifacts_run (manual dispatch) still reads /ci, because
       # Forgejo cannot serve artifacts across runs yet.
       - name: Download APKs from another run
-        if: ${{ inputs.artifacts_run != '' }}
+        if: ${{ inputs.publish && inputs.artifacts_run != '' }}
         env:
           ARTIFACTS_RUN: ${{ inputs.artifacts_run }}
         run: |
@@ -106,7 +117,7 @@ jobs:
           ci_artifact_get Manager apks/Manager
 
       - name: Prepare signing inputs
-        if: github.event_name != 'pull_request'
+        if: ${{ inputs.publish }}
         env:
           PROD_KEYSTORE: ${{ vars.KEYSTORE || secrets.KEYSTORE }}
           PROD_KEY_ALIAS: ${{ vars.KEY_ALIAS || secrets.KEY_ALIAS }}
@@ -122,7 +133,7 @@ jobs:
           echo "SIGN_KEY_PASSWORD=$PROD_KEY_PASSWORD" >> "$GITHUB_ENV"
 
       - name: Split and sign by architecture
-        if: github.event_name != 'pull_request'
+        if: ${{ inputs.publish }}
         run: |
           set -eu
           apk="$(find apks/Manager -type f -name '*.apk' | head -n 1)"
@@ -135,7 +146,7 @@ jobs:
           done
 
       - name: Publish rolling CI build
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
         run: |
           set -eux
           . .github/scripts/ci/common.sh
@@ -156,7 +167,7 @@ jobs:
       # The manager's update check reads the release through the Forgejo API, so
       # the APKs have to exist as release assets, not only on the runner host.
       - name: Publish the manager-ci release
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
         env:
           # Dedicated token with write:repository. The built-in GITHUB_TOKEN is
           # only a fallback: it may lack release permissions on this instance.
@@ -250,7 +261,7 @@ jobs:
           fi
 
       - name: Upload to Telegram
-        if: github.event_name != 'pull_request' && steps.telegram.outputs.upload == 'true'
+        if: ${{ inputs.publish && steps.telegram.outputs.upload == 'true' }}
         timeout-minutes: 20
         env:
           CHAT_ID: ${{ vars.CHAT_ID || secrets.CHAT_ID }}

@@ -216,9 +216,11 @@ jobs:
       release_build: false
     secrets: inherit
 
-  # Rolling release + Telegram. Its steps are gated, so on a pull request this
-  # job only downloads the artifacts and exits.
+  # Rolling release + Telegram. Pull requests pass publish=false so the reusable
+  # workflow skips signing and uploading entirely.
   publish:
     needs: manager
     uses: ./.github/workflows/publish.yml
+    with:
+      publish: ${{ github.event_name != 'pull_request' }}
     secrets: inherit
