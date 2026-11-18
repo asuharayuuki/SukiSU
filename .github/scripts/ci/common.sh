@@ -34,7 +34,7 @@ ci_checkout() {
 	git remote add origin "${CI_REMOTE}/${GITHUB_REPOSITORY}.git"
 
 	if [ "$depth" = "0" ]; then
-		git fetch -q origin "+refs/heads/*:refs/remotes/origin/*" "+refs/tags/*:refs/tags/*"
+		git fetch -q origin "+refs/heads/*:refs/remotes/origin/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/remotes/origin/pull/*"
 	else
 		git fetch -q --depth "$depth" origin "${GITHUB_SHA}"
 	fi

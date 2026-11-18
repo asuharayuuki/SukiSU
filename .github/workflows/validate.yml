@@ -38,11 +38,11 @@ jobs:
             (
               flock 9
               git --git-dir="$mirror" fetch -q --prune origin \
-                "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*"
+                "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/pull/*"
             ) 9>"${mirror}.lock"
           else
             git --git-dir="$mirror" fetch -q --prune origin \
-              "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*"
+              "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/pull/*"
           fi
           git clone -q --shared --no-checkout "$mirror" .
           git checkout -q "${GITHUB_SHA}"
