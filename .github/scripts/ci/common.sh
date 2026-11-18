@@ -103,9 +103,9 @@ ci_download_artifact() {
 		return 0
 	fi
 
-	# Runner-to-runner transfer over EasyTier. Each runner serves /ci/runs on
-	# port 18080 bound to its EasyTier address (scripts/ci/artifact-server.sh).
-	local peers="${CI_ARTIFACT_PEERS:-100.0.0.20 100.0.0.21}"
+	# Runner-to-runner transfer over the LAN. Each runner serves /ci/runs on
+	# port 18080 (scripts/ci/artifact-server.sh).
+	local peers="${CI_ARTIFACT_PEERS:-192.168.11.2 192.168.11.3}"
 	local host manifest files file ok
 	manifest="$(mktemp)"
 	for host in $peers; do
