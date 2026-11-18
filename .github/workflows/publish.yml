@@ -275,7 +275,6 @@ jobs:
           CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
           CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
           CNB_TAG: manager-ci
-          CNB_NAME: Manager CI
           CNB_ASSETS_DIR: apks/split
           CNB_BODY_FILE: cnb-notes.md
           CNB_PRERELEASE: "true"
@@ -283,8 +282,12 @@ jobs:
           CNB_TARGET_COMMITISH: ${{ vars.CNB_TARGET_COMMITISH || 'main' }}
         run: |
           set -eu
+          apk="$(find apks/split -type f -name '*.apk' | head -n1)"
+          code="${apk##*_}"
+          code="${code%%-*}"
+          export CNB_NAME="Manager CI (${code})"
           {
-            echo "# Manager CI"
+            echo "# Manager CI (${code})"
             echo
             echo "- Commit: `${GITHUB_SHA}`"
             echo "- Branch: `${GITHUB_REF_NAME}`"
