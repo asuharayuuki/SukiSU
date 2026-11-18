@@ -215,6 +215,31 @@ jobs:
           path: release/
           if-no-files-found: error
 
+      - name: Upload release to CNB
+        if: github.ref_type == 'tag'
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
+          CNB_TAG: ${{ github.ref_name }}
+          CNB_NAME: ${{ github.ref_name }}
+          CNB_ASSETS_DIR: release
+          CNB_BODY_FILE: release/notes.md
+          CNB_PRERELEASE: "false"
+          CNB_MAKE_LATEST: "true"
+          CNB_TARGET_COMMITISH: ${{ vars.CNB_TARGET_COMMITISH || 'main' }}
+        run: |
+          set -eu
+          {
+            echo "# ${GITHUB_REF_NAME}"
+            echo
+            echo "Release build for \`${GITHUB_SHA}\`."
+            echo
+            echo "## Recent changes"
+            echo
+            git log -30 --format='- %s (`%h`)'
+          } > release/notes.md
+          bash .github/scripts/ci/cnb-upload.sh
+
       - name: Store the release bundle for LAN handoff
         run: |
           set -eux

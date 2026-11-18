@@ -224,3 +224,94 @@ jobs:
     with:
       publish: ${{ github.event_name != 'pull_request' }}
     secrets: inherit
+
+  # Copy the complete CI output (manager, LKM, ksud, ksuinit, BuiltZygisk) and
+  # a changelog to the CNB result repository.  CNB_TOKEN is optional: without it
+  # the uploader exits successfully and the normal CI result is unchanged.
+  cnb:
+    needs: manager
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eux
+          remote="https://git.zako.shirkneko.top:20004"
+          mirror="/ci/repo-cache/${GITHUB_REPOSITORY}.git"
+          mkdir -p "$(dirname "$mirror")"
+          if [ ! -d "$mirror" ]; then
+            set +x
+            git -c "http.${remote}/.extraHeader=Authorization: token ${TOKEN}" \
+              clone -q --mirror "${remote}/${GITHUB_REPOSITORY}.git" "$mirror"
+            set -x
+          elif command -v flock >/dev/null 2>&1; then
+            (
+              flock 9
+              git --git-dir="$mirror" fetch -q --prune origin \
+                "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/pull/*"
+            ) 9>"${mirror}.lock"
+          else
+            git --git-dir="$mirror" fetch -q --prune origin \
+              "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/pull/*"
+          fi
+          git clone -q --shared --no-checkout "$mirror" .
+          git checkout -q "${GITHUB_SHA}"
+
+      - name: Check CNB token
+        id: cnb
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+        run: |
+          if [ -n "${CNB_TOKEN:-}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "CNB_TOKEN is not configured; skipping CNB upload"
+          fi
+
+      - name: Download all build artifacts
+        if: steps.cnb.outputs.enabled == 'true'
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eux
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
+          ci_download_all_artifacts "${GITHUB_WORKSPACE}/artifacts"
+
+      - name: Prepare CNB bundle
+        if: steps.cnb.outputs.enabled == 'true'
+        run: |
+          set -eu
+          mkdir -p cnb
+          find artifacts -type f -print0 | while IFS= read -r -d '' file; do
+            rel="${file#artifacts/}"
+            cp -f "$file" "cnb/${rel//\//__}"
+          done
+          {
+            echo "# Manager CI"
+            echo
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Branch: \`${GITHUB_REF_NAME}\`"
+            echo "- Run: ${GITHUB_RUN_NUMBER:-unknown}"
+            echo
+            echo "## Recent changes"
+            echo
+            git log -20 --format='- %s (`%h`)'
+          } > cnb/notes.md
+          find cnb -type f | wc -l
+
+      - name: Upload to CNB
+        if: steps.cnb.outputs.enabled == 'true'
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
+          CNB_TAG: manager-ci
+          CNB_NAME: Manager CI
+          CNB_ASSETS_DIR: cnb
+          CNB_BODY_FILE: cnb/notes.md
+          CNB_PRERELEASE: "true"
+          CNB_MAKE_LATEST: "false"
+          CNB_TARGET_COMMITISH: ${{ vars.CNB_TARGET_COMMITISH || 'main' }}
+        run: bash .github/scripts/ci/cnb-upload.sh
