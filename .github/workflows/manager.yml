@@ -174,27 +174,14 @@ jobs:
           apksigner --version
           python3 --version
 
-      # The ksud build may have run on the other runner, so the binaries come
-      # from Forgejo instead of the local /ci volume.
       - name: Download ksud artifacts
-        if: ${{ inputs.artifacts_run == '' }}
-        uses: ./.ci-actions/download-artifact
-        with:
-          path: artifacts
-
-      - name: Download ksud artifacts from another run
-        if: ${{ inputs.artifacts_run != '' }}
         env:
           ARTIFACTS_RUN: ${{ inputs.artifacts_run }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eux
-          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
-          mkdir -p "${CI_ARTIFACT_ROOT}"
-          cp -a "/ci/runs/${ARTIFACTS_RUN}"/* "${CI_ARTIFACT_ROOT}/"
-          mkdir -p "${GITHUB_WORKSPACE}/artifacts"
-          for t in aarch64-linux-android armv7-linux-androideabi x86_64-linux-android; do
-            ci_artifact_get "ksud-${t}" "${GITHUB_WORKSPACE}/artifacts/ksud-${t}"
-          done
+          . .github/scripts/ci/common.sh
+          ci_download_all_artifacts artifacts "${ARTIFACTS_RUN:-}"
 
       # --------------------------------------------------------
       # Copy ksud into Manager

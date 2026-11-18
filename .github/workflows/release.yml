@@ -152,9 +152,12 @@ jobs:
             cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
           done
       - name: Download the build artifacts
-        uses: ./.ci-actions/download-artifact
-        with:
-          path: artifacts
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_download_all_artifacts artifacts
 
       - name: Pack the release files
         run: |
@@ -204,6 +207,12 @@ jobs:
           path: release/
           if-no-files-found: error
 
+      - name: Store the release bundle for LAN handoff
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_artifact_put release release/
+
   # A tag push publishes a real release with every artifact attached: the kernel
   # modules, ksud, ksuinit and the manager APK. Without this the release only
   # existed on the runner host.      - name: Write the job summary
@@ -240,11 +249,13 @@ jobs:
             cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
           done
       - name: Download the release bundle
-        uses: ./.ci-actions/download-artifact
         if: github.ref_type == 'tag'
-        with:
-          name: release
-          path: release
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_download_artifact release release
 
       - name: Upload the release assets
         if: github.ref_type == 'tag'

@@ -99,10 +99,12 @@ jobs:
             cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
           done
       - name: Download the build artifacts
-        uses: ./.ci-actions/download-artifact
-        with:
-          # No name: every artifact of the run, each in artifacts/<name>/.
-          path: artifacts
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_download_all_artifacts artifacts
 
       - name: Prepare LKM files
         if: ${{ inputs.pack_lkm }}
