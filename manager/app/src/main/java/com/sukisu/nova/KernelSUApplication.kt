@@ -22,6 +22,8 @@ import com.sukisu.nova.ai.api.AiFeatureBridge
 import com.sukisu.nova.ai.host.ManagerAiHost
 import com.sukisu.nova.data.repository.SettingsRepositoryImpl
 import com.sukisu.nova.data.repository.SuperUserRepositoryImpl
+import com.sukisu.nova.data.repository.ThemeMediaInterceptor
+import com.sukisu.nova.data.repository.protectThemeStoreRedirectCredentials
 import com.sukisu.nova.ui.util.BuiltinAppIcons
 import com.sukisu.nova.ui.viewmodel.SuperUserViewModel
 import kotlinx.coroutines.CoroutineScope
@@ -39,7 +41,7 @@ import kotlin.time.Duration.Companion.milliseconds
 
 lateinit var ksuApp: KernelSUApplication
 
-class KernelSUApplication : Application(), ViewModelStoreOwner {
+class KernelSUApplication : Application(), ViewModelStoreOwner, coil.ImageLoaderFactory {
 
     companion object {
         private const val TAG = "KernelSUApplication"
@@ -70,6 +72,24 @@ class KernelSUApplication : Application(), ViewModelStoreOwner {
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(com.sukisu.nova.ui.util.LocaleHelper.wrap(base))
+    }
+
+    /**
+     * Theme screenshots use the default Coil loader, so it must be able to open
+     * CNB media envelopes and must drop theme credentials on cross-origin
+     * redirects. Other images are unaffected: the interceptor only touches
+     * responses that start with the SKM1 magic.
+     */
+    override fun newImageLoader(): coil.ImageLoader {
+        val builder = coil.ImageLoader.Builder(this).crossfade(true)
+        if (::okhttpClient.isInitialized) {
+            val client = okhttpClient.newBuilder()
+                .addInterceptor(ThemeMediaInterceptor)
+                .protectThemeStoreRedirectCredentials()
+                .build()
+            builder.okHttpClient(client)
+        }
+        return builder.build()
     }
 
     private fun isUserUnlocked(): Boolean =

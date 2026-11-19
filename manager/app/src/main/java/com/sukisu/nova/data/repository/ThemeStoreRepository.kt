@@ -15,6 +15,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.CacheControl
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
@@ -97,6 +98,48 @@ class ThemeStoreUnauthorizedException : IOException("Theme store token rejected"
 
 private class RangeUnsupportedException : IOException("Server does not support ranged downloads")
 
+private data class ThemeStoreDownloadOrigin(val url: HttpUrl)
+
+/**
+ * Keep the store credential on same-origin mirror redirects, but never forward
+ * it to a different host such as CNB or its signed CDN URL. OkHttp only strips
+ * Authorization automatically; custom credential headers need this policy.
+ */
+internal fun OkHttpClient.Builder.protectThemeStoreRedirectCredentials(): OkHttpClient.Builder =
+    addInterceptor { chain ->
+        val request = chain.request()
+        if (request.tag(ThemeStoreDownloadOrigin::class.java) != null) {
+            chain.proceed(request)
+        } else {
+            chain.proceed(
+                request.newBuilder()
+                    .tag(
+                        ThemeStoreDownloadOrigin::class.java,
+                        ThemeStoreDownloadOrigin(request.url),
+                    )
+                    .build(),
+            )
+        }
+    }.addNetworkInterceptor { chain ->
+        val request = chain.request()
+        val origin = request.tag(ThemeStoreDownloadOrigin::class.java)?.url
+        val crossOrigin = origin != null && (
+            origin.scheme != request.url.scheme ||
+                origin.host != request.url.host ||
+                origin.port != request.url.port
+            )
+        if (crossOrigin) {
+            chain.proceed(
+                request.newBuilder()
+                    .removeHeader(ThemeStoreRepository.TOKEN_HEADER)
+                    .removeHeader(ThemeStoreRepository.MEDIA_DIRECT_HEADER)
+                    .build(),
+            )
+        } else {
+            chain.proceed(request)
+        }
+    }
+
 /**
  * Resume marker for a partially downloaded package. [completed] lists the chunks that
  * were fully written, so a retry only fetches the missing ranges instead of the whole
@@ -152,6 +195,14 @@ class ThemeStoreRepository(
 ) {
     companion object {
         const val TOKEN_HEADER = "X-Sukisu-Theme-Token"
+
+        /**
+         * Asks the theme service to redirect previews/screenshots/avatars to the
+         * CNB raw URL. Only this app can open the sealed bytes, and the marker is
+         * stripped again on cross-origin redirects.
+         */
+        const val MEDIA_DIRECT_HEADER = "X-Sukisu-Media-Direct"
+        const val MEDIA_DIRECT_VALUE = "skm1"
 
         
         private const val MAX_CATALOG_BYTES = 8L * 1024L * 1024L
@@ -246,6 +297,7 @@ class ThemeStoreRepository(
     private val downloadClient: OkHttpClient by lazy {
         client.newBuilder()
             .cache(null)
+            .protectThemeStoreRedirectCredentials()
             // Parallel chunks need separate connections. Under HTTP/2 OkHttp would
             // multiplex every range onto one TCP stream, which inherits the mirror's
             // per-connection throttle and removes the benefit.

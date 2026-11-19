@@ -846,5 +846,8 @@ internal fun themeImageRequest(context: android.content.Context, url: String, to
             if (current.isNotBlank()) {
                 addHeader(ThemeStoreRepository.TOKEN_HEADER, current)
             }
+            // Theme images may live in the public CNB repository; ask for the
+            // sealed direct URL and decrypt it in ThemeMediaInterceptor.
+            addHeader(ThemeStoreRepository.MEDIA_DIRECT_HEADER, ThemeStoreRepository.MEDIA_DIRECT_VALUE)
         }
         .build()
