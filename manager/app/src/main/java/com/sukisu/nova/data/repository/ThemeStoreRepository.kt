@@ -494,6 +494,16 @@ class ThemeStoreRepository(
         onTransferred: (Long, Long) -> Unit,
         allowRestart: Boolean,
     ): File {
+        // A fresh download can be served by the CNB mirror directly. The server
+        // only redirects requests without `Range`, so probe once before the
+        // ranged downloader; an interrupted direct download falls back to the
+        // ranged (local) path, which can resume from the partial file.
+        if (resumeFrom == 0L && !metaFile.isFile && probeDirectPackage(url, token)) {
+            return downloadThemePackageSequential(
+                entry, url, token, tempFile, 0, expectedSha,
+                onProgress, onTransferred, false,
+            )
+        }
         val probe = probePackageRange(entry, url, token)
         if (probe.totalSize > 0L && probe.totalSize != entry.size) {
             tempFile.delete()
@@ -548,6 +558,36 @@ class ThemeStoreRepository(
     }
 
     
+    /**
+     * True when a Range-less HEAD redirects to the CNB raw host. CNB only serves
+     * the mirror redirect for requests without `Range`, and raw does not support
+     * ranged reads, so a hit here means "download the whole package from CNB".
+     * Mirrors on other hosts are left to the ranged path so their parallel
+     * chunking keeps working.
+     */
+    private fun probeDirectPackage(url: String, token: String): Boolean {
+        val request = Request.Builder()
+            .url(url)
+            .cacheControl(CacheControl.Builder().noCache().build())
+            .header("Accept-Encoding", "identity")
+            .head()
+            .withToken(token)
+            .build()
+        return try {
+            downloadClient.newCall(request).execute().use { response ->
+                if (response.code == 401) throw ThemeStoreUnauthorizedException()
+                if (!response.isSuccessful) return false
+                val host = response.request.url.host
+                host == "cnb.cool" || host.endsWith(".cnb.cool")
+            }
+        } catch (error: ThemeStoreUnauthorizedException) {
+            throw error
+        } catch (_: IOException) {
+            // CNB unreachable: fall back to the server's ranged download.
+            false
+        }
+    }
+
     private fun probePackageRange(
         entry: ThemeStoreEntry,
         url: String,
