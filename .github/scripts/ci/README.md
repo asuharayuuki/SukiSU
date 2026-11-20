@@ -64,7 +64,7 @@ one, so a running job keeps the image it started with.
 | --- | --- |
 | `actions/checkout` | a shared bare mirror in `/ci/repo-cache`, cloned with `--shared` |
 | `actions/setup-java`, `android-actions/setup-android`, `nttld/setup-ndk`, `Swatinem/rust-cache` | baked into the image; each job runs a `Check toolchain` step |
-| `actions/upload-artifact`, `actions/download-artifact` | `ci_artifact_put` / `ci_artifact_get` from `.github/scripts/ci/common.sh` |
+| `actions/upload-artifact`, `actions/download-artifact` | `ci_artifact_put` / `ci_download_artifact` from `.github/scripts/ci/common.sh`; CNB is the storage and the cross-runner transport, and summaries link to it |
 | `softprops/action-gh-release` | files collected under `${CI_ARTIFACT_ROOT}/release` |
 | `gh release` publishing | split APKs copied to `${CI_ARTIFACT_ROOT}/manager-ci/<sha>` |
 
@@ -90,12 +90,38 @@ only proxies a fixed domain list), and `services.gradle.org` redirects to
 
 ## Artifact transport
 
-The runner has no artifact service, so jobs exchange files through a host
-directory mounted into every job container:
+Jobs may land on different runners, and a re-run may need another run's output,
+so artifacts move through these places, tried in this order by
+`ci_download_artifact`:
+
+1. **`/ci` volume** — `/ci/runs/<run_id>/<artifact>/`, written by
+   `ci_artifact_put`. Free, but only exists on the host that produced the file.
+2. **EasyTier peer** — each runner serves `/ci/runs` on port 18080
+   (`scripts/ci/artifact-server.sh`), so the other host can fetch the same tree.
+   Flat files only: the manifest fetch rejects any entry containing `/`.
+3. **CNB** — every artifact is also archived as `<name>.tar.gz` on the CNB
+   release `ci-<run_id>` of `CNB_REPO` (default `shirkneko/sukisu-result`). This
+   is the path that works across hosts *and* across runs, and it carries the
+   directory layout the peer cannot. Downloads are anonymous. Those releases are
+   created as prereleases so the manager's stable channel never picks one up.
+4. **Forgejo Artifacts API** — last resort (zip download); needs a token and is
+   the slow endpoint.
+
+CNB is where the artifacts live on purpose: the tunnel to the Forgejo server is
+the bottleneck, so no job copies them back into a Forgejo artifact or release.
+Job summaries and the release bodies link straight at the CNB download URLs; the
+only thing Forgejo still stores is release metadata (title and body) the manager
+parses.
+
+Summary links percent-encode one character of the CNB account name
+(`cnb.cool/%73hirkneko/...`). The runner masks every occurrence of a secret value
+in job output, and on this instance that value is the account name, so a plain
+link arrives as `cnb.cool/***/...`. CNB decodes the escape, so the link still
+works, and the masker no longer matches.
 
 ```
 /ci/repo-cache/                bare mirror per repository, shared by all jobs
-/ci/runs/<run_id>/<artifact>/  per-run artifacts
+/ci/runs/<run_id>/<artifact>/  per-run artifacts (+ manifest.json)
 /ci/runs/<run_id>/release/     packaged release files
 /ci/runs/<run_id>/manager-ci/  rolling CI APKs
 /ci/tools/cargo/               cargo registry + git cache
@@ -107,6 +133,10 @@ On Windows the same tree is visible at `\\wsl$\Debian\srv\forgejo-ci`.
 `valid_volumes` matters: act silently drops a `--volume` it has not been told to
 allow, and the job then writes to a throwaway `/ci` inside the container.
 
+Without `CNB_TOKEN` the puts stay on `/ci` (and warn), which only works when
+every job of the run landed on the same host; nothing fails, so a PR build still
+runs.
+
 ## Secrets and variables
 
 Signing uses repository **variables** (`KEYSTORE` as base64, `KEY_ALIAS`,
@@ -114,6 +144,10 @@ Signing uses repository **variables** (`KEYSTORE` as base64, `KEY_ALIAS`,
 Telegram upload reads `BOT_TOKEN` and `CHAT_ID`, plus `MESSAGE_THREAD_ID` for
 normal builds and `MESSAGE_RELEASES_THREAD_ID` for releases; it is skipped when
 `BOT_TOKEN` or `CHAT_ID` is empty. Only the single Manager variant is published.
+
+CNB needs `CNB_TOKEN` (release read/write); `CNB_REPO` is an optional variable
+(default `shirkneko/sukisu-result`). Publishing back to Forgejo uses
+`RELEASE_API_TOKEN` when set, and the built-in `GITHUB_TOKEN` otherwise.
 
 ## Disabled workflows
 
@@ -123,9 +157,9 @@ Renamed to `*.yml.disabled`; Forgejo and GitHub both ignore those names.
   from GitHub that does not exist here.
 - `ksud-extra.yml` builds with `cross`, installed from a pinned `github.com`
   commit, and needs a Docker socket inside the job container. Nothing calls it.
-- `builtzygisk.yml` builds `external/BuiltZygisk`, a submodule hosted on
-  `github.com`. `ksud.yml` therefore runs with `pack_builtzygisk: false` and ksud
-  is built without the embedded zygisk payload.
+
+`builtzygisk.yml` is *not* disabled: `external/BuiltZygisk` is mirrored onto this
+instance, and `ci.yml` / `release.yml` both call it.
 
 ## Commit signing
 

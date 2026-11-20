@@ -44,6 +44,9 @@ jobs:
     env:
       CARGO_HOME: /ci/tools/cargo
       RUSTUP_HOME: /usr/local/rustup
+      # Artifacts travel through CNB; without a token they stay on /ci only.
+      CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+      CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
     steps:
       - name: Checkout
         env:
@@ -187,15 +190,6 @@ jobs:
           . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_artifact_put "ksud-${{ matrix.target }}" \
             "target/${{ matrix.target }}/release/ksud"
-
-      - name: Upload the ksud binary
-        uses: ./.ci-actions/upload-artifact
-        with:
-          name: ksud-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/ksud
-          if-no-files-found: error
-
-
 
       - name: Write the job summary
         run: |

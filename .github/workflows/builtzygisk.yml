@@ -32,6 +32,9 @@ jobs:
       # Cap parallelism: several job containers run at once.
       MAKEFLAGS: "-j6"
       CARGO_BUILD_JOBS: "6"
+      # Artifacts travel through CNB; without a token they stay on /ci only.
+      CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+      CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
     steps:
       - name: Checkout
         env:
@@ -158,66 +161,6 @@ jobs:
             # under the keys aarch64/zygiskd etc, which its own lookups never find.
             ci_artifact_put "builtzygisk-$arch" "${GITHUB_WORKSPACE}/builtzygisk/$arch"/*
           done
-
-      # GitHub-style artifact: Forgejo stores it server-side and lists it on the
-      # run page. act runs JS actions as `node <action>`, so node has to be on
-      # PATH first (the image keeps it in the tool cache only).
-      - name: Provide node and the action sources
-        run: |
-          set -eux
-          # act runs JS actions with `node` from the container PATH, and it would
-          # otherwise clone every `uses:` action from data.forgejo.org. Both are
-          # pre-seeded in the shared /ci volume, so a job needs no network for
-          # either.
-          found=
-          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
-            if [ -x "$dir/node" ]; then
-              echo "$dir" >> "$GITHUB_PATH"
-              found=1
-              break
-            fi
-          done
-          [ -n "$found" ] || { echo "node not found (tool cache and /ci/tools/node)" >&2; exit 1; }
-          mkdir -p "$GITHUB_WORKSPACE/.ci-actions"
-          for action in upload-artifact download-artifact; do
-            rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
-            cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
-          done
-      - name: Upload the aarch64 payload
-        uses: ./.ci-actions/upload-artifact
-        with:
-          name: builtzygisk-aarch64
-          path: builtzygisk/aarch64
-          if-no-files-found: error
-
-
-
-      - name: Upload the arm payload
-        uses: ./.ci-actions/upload-artifact
-        with:
-          name: builtzygisk-arm
-          path: builtzygisk/arm
-          if-no-files-found: error
-
-
-
-      - name: Upload the x86_64 payload
-        uses: ./.ci-actions/upload-artifact
-        with:
-          name: builtzygisk-x86_64
-          path: builtzygisk/x86_64
-          if-no-files-found: error
-
-
-
-      - name: Upload the riscv64 payload
-        uses: ./.ci-actions/upload-artifact
-        with:
-          name: builtzygisk-riscv64
-          path: builtzygisk/riscv64
-          if-no-files-found: error
-
-
 
       - name: Write the job summary
         run: |

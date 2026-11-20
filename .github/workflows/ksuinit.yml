@@ -18,6 +18,9 @@ jobs:
       RUSTUP_HOME: /usr/local/rustup
       # Same reason as MAKEFLAGS in ddk-lkm: cap per-job parallelism.
       CARGO_BUILD_JOBS: "6"
+      # Artifacts travel through CNB; without a token they stay on /ci only.
+      CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+      CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
     steps:
       - name: Checkout
         env:
@@ -104,56 +107,6 @@ jobs:
           ci_artifact_put ksuinit-x86_64 \
             target/x86_64-linux-android/release/ksuinit
 
-      # GitHub-style artifact: Forgejo stores it server-side and lists it on the
-      # run page. act runs JS actions as `node <action>`, so node has to be on
-      # PATH first (the image keeps it in the tool cache only).
-      - name: Provide node and the action sources
-        run: |
-          set -eux
-          # act runs JS actions with `node` from the container PATH, and it would
-          # otherwise clone every `uses:` action from data.forgejo.org. Both are
-          # pre-seeded in the shared /ci volume, so a job needs no network for
-          # either.
-          found=
-          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
-            if [ -x "$dir/node" ]; then
-              echo "$dir" >> "$GITHUB_PATH"
-              found=1
-              break
-            fi
-          done
-          [ -n "$found" ] || { echo "node not found (tool cache and /ci/tools/node)" >&2; exit 1; }
-          mkdir -p "$GITHUB_WORKSPACE/.ci-actions"
-          for action in upload-artifact download-artifact; do
-            rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
-            cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
-          done
-      - name: Upload ksuinit (aarch64)
-        uses: ./.ci-actions/upload-artifact
-        with:
-          name: ksuinit-aarch64
-          path: target/aarch64-linux-android/release/ksuinit
-          if-no-files-found: error
-
-
-
-      - name: Upload ksuinit (arm)
-        uses: ./.ci-actions/upload-artifact
-        with:
-          name: ksuinit-arm
-          path: target/armv7-linux-androideabi/release/ksuinit
-          if-no-files-found: error
-
-
-
-      - name: Upload ksuinit (x86_64)
-        uses: ./.ci-actions/upload-artifact
-        with:
-          name: ksuinit-x86_64
-          path: target/x86_64-linux-android/release/ksuinit
-          if-no-files-found: error
-
-
       - name: Write the job summary
         run: |
           set -eux
@@ -165,6 +118,9 @@ jobs:
     env:
       CARGO_HOME: /ci/tools/cargo
       RUSTUP_HOME: /usr/local/rustup
+      # Artifacts travel through CNB; without a token they stay on /ci only.
+      CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+      CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
     steps:
       - name: Checkout
         env:
@@ -220,36 +176,6 @@ jobs:
           . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_artifact_put ksuinit-riscv64 \
             target/riscv64-linux-android/release/ksuinit
-
-      - name: Provide node and the action sources
-        run: |
-          set -eux
-          # act runs JS actions with `node` from the container PATH, and it would
-          # otherwise clone every `uses:` action from data.forgejo.org. Both are
-          # pre-seeded in the shared /ci volume, so a job needs no network for
-          # either.
-          found=
-          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
-            if [ -x "$dir/node" ]; then
-              echo "$dir" >> "$GITHUB_PATH"
-              found=1
-              break
-            fi
-          done
-          [ -n "$found" ] || { echo "node not found (tool cache and /ci/tools/node)" >&2; exit 1; }
-          mkdir -p "$GITHUB_WORKSPACE/.ci-actions"
-          for action in upload-artifact download-artifact; do
-            rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
-            cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
-          done
-      - name: Upload ksuinit (riscv64)
-        uses: ./.ci-actions/upload-artifact
-        with:
-          name: ksuinit-riscv64
-          path: target/riscv64-linux-android/release/ksuinit
-          if-no-files-found: error
-
-
 
       - name: Write the job summary
         run: |

@@ -62,6 +62,9 @@ jobs:
 
     env:
       GRADLE_USER_HOME: /ci/tools/gradle
+      # Artifacts travel through CNB; without a token they stay on /ci only.
+      CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+      CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
 
     steps:
 
@@ -319,15 +322,8 @@ jobs:
       # Upload un-repacked APK
       # --------------------------------------------------------
 
-      # Repack runs on whichever runner is free, so the APK goes through
-      # Forgejo instead of the per-host /ci volume.
-      - name: Upload the Gradle APK
-        uses: ./.ci-actions/upload-artifact
-        with:
-          name: ${{ steps.determine.outputs.title }}-gradle
-          path: manager/app/build/outputs/apk/release/*.apk
-          if-no-files-found: error
-
+      # The job summary links straight at the CNB archive ci_artifact_put writes;
+      # nothing is copied back to Forgejo.
       - name: Store the Gradle APK for LAN handoff
         run: |
           set -eux
@@ -358,6 +354,11 @@ jobs:
     needs: [build-manager]
 
     runs-on: android
+
+    env:
+      # Artifacts travel through CNB; without a token they stay on /ci only.
+      CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+      CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
 
     steps:
 
@@ -572,13 +573,6 @@ jobs:
           . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_artifact_put "${{ steps.determine.outputs.title }}" \
             dist/*.apk
-
-      - name: Upload the manager APK
-        uses: ./.ci-actions/upload-artifact
-        with:
-          name: sukisu-manager
-          path: dist/*.apk
-          if-no-files-found: error
 
       - name: Store the manager APK for local handoff
         run: |

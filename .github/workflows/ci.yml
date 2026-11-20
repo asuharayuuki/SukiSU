@@ -187,6 +187,8 @@ jobs:
       expected_hash: ${{ needs.generate-key.outputs.expected_hash || '' }}
       version_code: ${{ needs.determine-version.outputs.version_code }}
       release_build: false
+    # ddk-lkm archives its .ko files on CNB, so the token has to reach it.
+    secrets: inherit
 
   build-ksuinit:
     uses: ./.github/workflows/ksuinit.yml
@@ -224,7 +226,3 @@ jobs:
     with:
       publish: ${{ github.event_name != 'pull_request' }}
     secrets: inherit
-
-  # Copy the complete CI output (manager, LKM, ksud, ksuinit, BuiltZygisk) and
-  # a changelog to the CNB result repository.  CNB_TOKEN is optional: without it
-  # the uploader exits successfully and the normal CI result is unchanged.

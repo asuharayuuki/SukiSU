@@ -66,6 +66,7 @@ jobs:
     with:
       version_code: ${{ needs.determine-version.outputs.version_code }}
       release_build: true
+    secrets: inherit
 
   build-ksuinit:
     uses: ./.github/workflows/ksuinit.yml
@@ -102,6 +103,10 @@ jobs:
   assemble:
     needs: [build-lkm, build-ksuinit, build-ksud, manager]
     runs-on: ubuntu-latest
+    env:
+      # Artifacts travel through CNB; without a token they stay on /ci only.
+      CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+      CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
     steps:
       - name: Checkout
         env:
@@ -208,13 +213,6 @@ jobs:
           test -n "$(ls -A "$out")"
           echo "release files collected in ${out}"
 
-      - name: Upload the release bundle
-        uses: ./.ci-actions/upload-artifact
-        with:
-          name: release
-          path: release/
-          if-no-files-found: error
-
       - name: Upload release to CNB
         if: github.ref_type == 'tag'
         env:
@@ -302,102 +300,73 @@ jobs:
     needs: [assemble]
     runs-on: ubuntu-latest
     steps:
-      # assemble may have run on another runner, so its output comes from
-      # Forgejo rather than the local /ci volume.
-      - name: Provide node and the action sources
-        run: |
-          set -eux
-          # act runs JS actions with `node` from the container PATH, and it would
-          # otherwise clone every `uses:` action from data.forgejo.org. Both are
-          # pre-seeded in the shared /ci volume, so a job needs no network for
-          # either.
-          found=
-          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
-            if [ -x "$dir/node" ]; then
-              echo "$dir" >> "$GITHUB_PATH"
-              found=1
-              break
-            fi
-          done
-          [ -n "$found" ] || { echo "node not found (tool cache and /ci/tools/node)" >&2; exit 1; }
-          mkdir -p "$GITHUB_WORKSPACE/.ci-actions"
-          for action in upload-artifact download-artifact; do
-            rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
-            cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
-          done
-      - name: Download the release bundle
-        id: download_release
-        if: github.ref_type == 'tag'
-        continue-on-error: true
-        env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -eux
-          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
-          ci_download_artifact release "${GITHUB_WORKSPACE}/release"
-
-      - name: Download the release bundle (Forgejo fallback)
-        if: github.ref_type == 'tag' && steps.download_release.outcome == 'failure'
-        uses: ./.ci-actions/download-artifact
-        with:
-          name: release
-          path: release
-
-      - name: Upload the release assets
+      # Nothing is uploaded here any more: the assets live on CNB, so this job
+      # only points the Forgejo release page at them (the old step pushed 46
+      # files through the tunnel and could take half an hour).
+      - name: Point the release page at CNB
         if: github.ref_type == 'tag'
         env:
           # Dedicated token with write:repository. The built-in GITHUB_TOKEN is
           # only a fallback: it may lack release permissions on this instance.
           API_TOKEN: ${{ secrets.RELEASE_API_TOKEN || vars.RELEASE_API_TOKEN || secrets.GITHUB_TOKEN }}
+          CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
+          CNB_WEB: ${{ vars.CNB_WEB || 'https://cnb.cool' }}
         run: |
           set -eu
-          # No checkout here: the assets come from the `release` artifact that
-          # assemble published, so common.sh is not available and not needed.
           site="${FORGEJO_PUBLIC_URL:-https://git.zako.shirkneko.top:20004}"
           api="${site}/api/v1/repos/${GITHUB_REPOSITORY}"
           auth="Authorization: token ${API_TOKEN}"
           tag="${GITHUB_REF_NAME}"
-          dir="${GITHUB_WORKSPACE}/release"
-          test -d "$dir"
-          echo "publishing ${tag} from ${dir}"
+          body="$(printf 'Release assets built by CI.\n\n下载 / Download: %s/%s/-/releases/tag/%s\n' \
+            "$CNB_WEB" "$CNB_REPO" "$tag")"
 
           net() {
             curl -sS --retry 5 --retry-all-errors --retry-delay 2 \
-              --connect-timeout 10 --max-time 300 "$@"
+              --connect-timeout 10 --max-time 120 "$@"
           }
           net_once() {
             curl -sS --retry 5 --retry-connrefused --retry-delay 2 \
-              --connect-timeout 10 --max-time 300 "$@"
+              --connect-timeout 10 --max-time 120 "$@"
           }
 
           release="$api/releases/tags/$tag"
           status="$(net -o /tmp/release.json -w '%{http_code}' -H "$auth" "$release" || true)"
+          echo "existing release: HTTP ${status}"
           if [ "$status" = "200" ]; then
             id="$(jq -r '.id' /tmp/release.json)"
-            echo "existing release id=${id}"
           else
-            payload="$(jq -nc --arg tag "$tag" --arg sha "$GITHUB_SHA" \
+            payload="$(jq -nc --arg tag "$tag" --arg sha "$GITHUB_SHA" --arg body "$body" \
               '{tag_name: $tag, target_commitish: $sha, name: $tag, prerelease: false,
-                body: "Release assets built by CI."}')"
+                body: $body}')"
             net_once -X POST -H "$auth" -H 'Content-Type: application/json' \
-              -d "$payload" "$api/releases" >/dev/null
+              -d "$payload" "$api/releases" >/dev/null || true
+            # A lost response can leave the release behind anyway; read it back.
             net -H "$auth" "$release" -o /tmp/release.json
             id="$(jq -r '.id' /tmp/release.json)"
-            echo "created release id=${id}"
           fi
           test -n "$id" && [ "$id" != "null" ]
 
-          # Re-runs replace the previous assets instead of piling up duplicates.
-          for asset_id in $(jq -r '.assets[].id' /tmp/release.json); do
-            net -X DELETE -H "$auth" "$api/releases/${id}/assets/$asset_id" >/dev/null
+          # Drop the assets of previous publishes: they are stale copies, and the
+          # link in the body is the only download this page offers now.
+          for asset_id in $(jq -r '.assets[]?.id' /tmp/release.json); do
+            net -f -X DELETE -H "$auth" "$api/releases/${id}/assets/$asset_id" >/dev/null
           done
 
-          # Flat asset names: lkm-<kmi>_kernelsu.ko, ksud-<triple>,
-          # ksuinit-<arch> and the manager APK are already unique.
-          find "$dir" -type f | sort | while read -r f; do
-            name="$(basename "$f")"
-            net_once -f -X POST -H "$auth" -F "attachment=@${f}" \
-              "$api/releases/${id}/assets?name=${name}" >/dev/null
-            echo "uploaded ${name}"
-          done
-          echo "release ${tag} updated"
+          payload="$(jq -nc --arg tag "$tag" --arg sha "$GITHUB_SHA" --arg body "$body" \
+            '{tag_name: $tag, target_commitish: $sha, name: $tag, prerelease: false,
+              body: $body}')"
+          net -f -X PATCH -H "$auth" -H 'Content-Type: application/json' \
+            -d "$payload" "$api/releases/${id}" >/dev/null
+
+          net -H "$auth" "$release" -o /tmp/release-after.json
+          actual="$(jq -r '.name // ""' /tmp/release-after.json)"
+          left="$(jq -r '.assets | length' /tmp/release-after.json)"
+          test "$actual" = "$tag" || {
+            echo "release name is '${actual}', expected '${tag}'" >&2
+            exit 1
+          }
+          test "$left" = "0" || {
+            echo "release still carries ${left} asset(s); stale files must not stay" >&2
+            exit 1
+          }
+          echo "release ${tag} points at CNB: ${CNB_WEB}/${CNB_REPO}/-/releases/tag/${tag}"

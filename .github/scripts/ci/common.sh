@@ -17,6 +17,29 @@ fi
 
 CI_REMOTE="${CI_REMOTE:-https://git.zako.shirkneko.top:20004}"
 CI_ARTIFACT_ROOT="${CI_ARTIFACT_ROOT:-/ci/runs/${GITHUB_RUN_ID:-local}}"
+# CNB carries artifacts between runners. /ci only exists on the host that wrote
+# the file, and the Forgejo artifact API is the slow endpoint, so every artifact
+# is archived on CNB (release `ci-<run_id>`) as `<name>.tar.gz`.
+CI_CNB_TAG_PREFIX="${CI_CNB_TAG_PREFIX:-ci-}"
+
+# The CNB API calls live in cnb.sh, shared with cnb-upload.sh. Prefer the
+# directory this file lives in (BASH_SOURCE), then the workspace, so sourcing
+# works from any cwd and from a step script that was written to a temp path.
+CI_SCRIPTS_DIR=""
+if [ -n "${BASH_VERSION:-}" ]; then
+	eval 'CI_SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"'
+fi
+if [ -n "$CI_SCRIPTS_DIR" ] && [ -f "${CI_SCRIPTS_DIR}/cnb.sh" ]; then
+	# shellcheck disable=SC1091  # computed path; cnb.sh is checked on its own
+	. "${CI_SCRIPTS_DIR}/cnb.sh"
+elif [ -f "${GITHUB_WORKSPACE:-.}/.github/scripts/ci/cnb.sh" ]; then
+	CI_SCRIPTS_DIR="${GITHUB_WORKSPACE:-.}/.github/scripts/ci"
+	# shellcheck disable=SC1091
+	. "${CI_SCRIPTS_DIR}/cnb.sh"
+else
+	echo "common.sh: cnb.sh not found next to the script or in \$GITHUB_WORKSPACE" >&2
+	exit 1
+fi
 
 # ci_checkout [depth]
 #   depth 1 (default) fetches just the triggering commit. depth 0 fetches all
@@ -46,6 +69,29 @@ ci_artifact_path() {
 	printf '%s/%s\n' "$CI_ARTIFACT_ROOT" "$1"
 }
 
+# ci_artifact_manifest DIR
+#   Writes the file list consumed by the LAN peer downloader.
+ci_artifact_manifest() {
+	local dir="$1"
+	local files escaped first
+	files="$(cd "$dir" && find . -type f ! -name manifest.json | sed 's#^\./##' | sort)"
+	{
+		printf '{"files":['
+		first=1
+		printf '%s\n' "$files" | while IFS= read -r file; do
+			[ -n "$file" ] || continue
+			if [ "$first" = 1 ]; then
+				first=0
+			else
+				printf ','
+			fi
+			escaped="$(printf '%s' "$file" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+			printf '"%s"' "$escaped"
+		done
+		printf ']}'
+	} > "$dir/manifest.json"
+}
+
 # ci_artifact_put NAME PATH...
 #   Copies files or directories into the artifact directory. Missing sources are
 #   an error: a silent skip would hide a broken build.
@@ -71,55 +117,116 @@ ci_artifact_put() {
 	done
 	ci_artifact_manifest "$dest"
 	echo "stored artifact ${name} in ${dest}"
+	ci_artifact_cnb_put "$name" "$dest"
 }
 
-# ci_artifact_manifest DIR
-#   Writes the file list consumed by the LAN peer downloader.
-ci_artifact_manifest() {
-	local dir="$1"
-	local files escaped first
-	files="$(cd "$dir" && find . -type f ! -name manifest.json | sed 's#^\./##' | sort)"
-	{
-		printf '{"files":['
-		first=1
-		printf '%s\n' "$files" | while IFS= read -r file; do
-			[ -n "$file" ] || continue
-			if [ "$first" = 1 ]; then
-				first=0
-			else
-				printf ','
-			fi
-			escaped="$(printf '%s' "$file" | sed 's/\\/\\\\/g; s/"/\\"/g')"
-			printf '"%s"' "$escaped"
-		done
-		printf ']}'
-	} > "$dir/manifest.json"
+# ci_artifact_cnb_tag RUN_ID -> release tag that holds that run's artifacts
+ci_artifact_cnb_tag() {
+	printf '%s%s\n' "$CI_CNB_TAG_PREFIX" "${1:-${GITHUB_RUN_ID:-local}}"
 }
 
-# ci_artifact_get NAME DEST
-ci_artifact_get() {
-	local name="$1"
-	local dest="$2"
-	local src
-	src="$(ci_artifact_path "$name")"
-	if [ ! -d "$src" ]; then
-		echo "artifact not found: ${name} (${src})" >&2
-		return 1
+# ci_artifact_cnb_put NAME DIR
+#   Archives DIR (without manifest.json, which is a /ci-local detail) and stores
+#   it as `<name>.tar.gz` on CNB. A missing token or a CNB outage only warns:
+#   this host still has the /ci copy, and the workflows fall back to the Forgejo
+#   artifact API.
+ci_artifact_cnb_put() {
+	local name="$1" dir="$2" tag id archive archived attempt canonical
+	if ! cnb_enabled; then
+		echo "artifact ${name}: CNB_TOKEN is not set, keeping it on /ci only" >&2
+		return 0
 	fi
-	mkdir -p "$dest"
-	cp -a "$src"/. "$dest"/
+	tag="$(ci_artifact_cnb_tag "${GITHUB_RUN_ID:-local}")"
+	archive="$(mktemp)"
+	if ! tar -czf "$archive" --exclude=manifest.json -C "$dir" .; then
+		echo "artifact ${name}: cannot archive ${dir}" >&2
+		rm -f "$archive"
+		return 0
+	fi
+	# The release lives in CNB_REPO, which does not contain this build's commit,
+	# so target_commitish has to be a ref of that repository: CNB rejects a
+	# foreign SHA with HTTP 400. prerelease=true keeps the dump out of the
+	# manager's stable channel, which picks the newest non-prerelease release.
+	if ! id="$(cnb_release_ensure "$tag" "$tag" "${CNB_TARGET_COMMITISH:-main}" "" true false)"; then
+		echo "artifact ${name}: cannot reach CNB, keeping the /ci copy only" >&2
+		rm -f "$archive"
+		return 0
+	fi
+	# Upload, then prove the copy is visible through the tag our consumers list.
+	# A racing create can leave a second release behind the same tag, and an asset
+	# that went there would be silently invisible downstream.
+	archived=0
+	attempt=1
+	while [ "$attempt" -le 2 ]; do
+		attempt=$((attempt + 1))
+		if ! cnb_asset_put "$archive" "${name}.tar.gz" "$id"; then
+			break
+		fi
+		if cnb_release_assets "$tag" | grep -qxF "${name}.tar.gz"; then
+			archived=1
+			break
+		fi
+		echo "artifact ${name}: release ${id} does not list it; retrying on the tag's release" >&2
+		canonical="$(cnb_release_id "$tag")"
+		if [ -z "$canonical" ] || [ "$canonical" = "$id" ]; then
+			break
+		fi
+		id="$canonical"
+	done
+	if [ "$archived" = 1 ]; then
+		echo "artifact ${name} archived on CNB (${tag})"
+	else
+		echo "artifact ${name}: CNB upload failed, keeping the /ci copy only" >&2
+	fi
+	rm -f "$archive"
+	return 0
 }
 
-# ci_artifact_exists NAME
-ci_artifact_exists() {
-	[ -d "$(ci_artifact_path "$1")" ]
+# ci_artifact_names RUN_ID
+#   One artifact name per line: everything CNB holds for the run, merged with
+#   this host's /ci tree. Both are needed -- a producer that could not reach CNB
+#   leaves its artifact only on its own host, and a consumer on another host only
+#   sees the CNB copy. Only /ci entries with a manifest.json count, which excludes
+#   the `manager-ci/<sha>` tree. The Forgejo API is the last resort.
+ci_artifact_names() {
+	local run_id="${1:-${GITHUB_RUN_ID:-0}}" names="" local_dir entry
+	if cnb_enabled; then
+		names="$(cnb_release_assets "$(ci_artifact_cnb_tag "$run_id")" |
+			sed -n 's/\.tar\.gz$//p' | sort -u)"
+	fi
+	local_dir="/ci/runs/${run_id}"
+	if [ -d "$local_dir" ]; then
+		for entry in "$local_dir"/*/; do
+			[ -f "${entry%/}/manifest.json" ] || continue
+			names="$(printf '%s\n%s\n' "$names" "$(basename "$entry")" |
+				sed '/^$/d' | sort -u)"
+		done
+	fi
+	if [ -n "$names" ]; then
+		printf '%s\n' "$names"
+		return 0
+	fi
+
+	local token="${TOKEN:-${GITHUB_TOKEN:-}}"
+	[ -n "$token" ] || return 1
+	local site="${CI_ARTIFACT_BASE:-http://100.0.0.11:3000}"
+	local api="${site}/api/v1/repos/${GITHUB_REPOSITORY}"
+	local json
+	if ! curl -fsS --max-time 4 "${site}/api/v1/version" >/dev/null 2>&1; then
+		site="${FORGEJO_PUBLIC_URL:-https://git.zako.shirkneko.top:20004}"
+		api="${site}/api/v1/repos/${GITHUB_REPOSITORY}"
+	fi
+	json="$(curl -fsS --max-time 30 -H "Authorization: token ${token}" \
+		"${api}/actions/artifacts?limit=100")" || return 1
+	printf '%s' "$json" | jq -r --argjson rid "${run_id:-0}" \
+		'.[] | select(.expired == false) | select($rid == 0 or .run_id == $rid) | .name' |
+		sort -u
 }
 
 # ci_download_artifact NAME DEST [RUN_ID]
-#   Prefer the per-run copy on the shared /ci volume (fast when the producing
-#   and consuming jobs land on the same runner). Otherwise fetch the artifact
-#   zip through the Forgejo API, with curl's byte progress instead of the
-#   download-artifact action's file-count progress.
+#   Fetch one artifact into DEST, cheapest source first: this host's /ci copy,
+#   the EasyTier peer, CNB (works across hosts *and* runs), then the Forgejo
+#   artifact API.
 ci_download_artifact() {
 	local name="$1"
 	local dest="$2"
@@ -170,6 +277,19 @@ ci_download_artifact() {
 	done
 	rm -f "$manifest"
 
+	# CNB: the path that works across hosts and across runs. Anonymous download,
+	# and the archive keeps the directory layout the peer transfer cannot.
+	local cnb_tag archive
+	cnb_tag="$(ci_artifact_cnb_tag "$run_id")"
+	archive="$(mktemp)"
+	if cnb_asset_get "${name}.tar.gz" "$archive" "$cnb_tag" 2>/dev/null &&
+		tar -xzf "$archive" -C "$dest" 2>/dev/null; then
+		rm -f "$archive"
+		echo "artifact ${name} downloaded from CNB (${cnb_tag})"
+		return 0
+	fi
+	rm -f "$archive"
+
 	local token="${TOKEN:-${GITHUB_TOKEN:-}}"
 	[ -n "$token" ] || {
 		echo "artifact ${name}: missing GITHUB_TOKEN for API download" >&2
@@ -206,54 +326,78 @@ ci_download_artifact() {
 }
 
 # ci_download_all_artifacts DEST [RUN_ID]
-#   Mirrors download-artifact without a name: one directory per artifact.
+#   One directory per artifact. The names come from ci_artifact_names, so they are
+#   visible across hosts and across runs even though nothing is uploaded to
+#   Forgejo any more.
 ci_download_all_artifacts() {
 	local dest="$1"
 	local run_id="${2:-${GITHUB_RUN_ID:-0}}"
-	local token="${TOKEN:-${GITHUB_TOKEN:-}}"
-	[ -n "$token" ] || {
-		echo "missing GITHUB_TOKEN for artifact list" >&2
-		return 1
-	}
-	local site="${CI_ARTIFACT_BASE:-http://100.0.0.11:3000}"
-	local api="${site}/api/v1/repos/${GITHUB_REPOSITORY}"
-	if ! curl -fsS --max-time 4 "${site}/api/v1/version" >/dev/null 2>&1; then
-		site="${FORGEJO_PUBLIC_URL:-https://git.zako.shirkneko.top:20004}"
-		api="${site}/api/v1/repos/${GITHUB_REPOSITORY}"
-	fi
-	local json names name
-	json="$(curl -fsS --max-time 30 -H "Authorization: token ${token}" \
-		"${api}/actions/artifacts?limit=100")"
-	names="$(printf '%s' "$json" | jq -r --argjson rid "${run_id:-0}" \
-		'.[] | select(.expired == false) | select($rid == 0 or .run_id == $rid) | .name' | sort -u)"
+	local names name
+	names="$(ci_artifact_names "$run_id")" || true
 	[ -n "$names" ] || {
 		echo "no artifacts found for run ${run_id}" >&2
 		return 1
 	}
 	mkdir -p "$dest"
-	for name in $names; do
+	printf '%s\n' "$names" | while IFS= read -r name; do
+		[ -n "$name" ] || continue
 		ci_download_artifact "$name" "$dest/$name" "$run_id"
 	done
 }
 
+# ci_cnb_link_base
+#   The CNB download prefix for this run, with the account name percent-encoded
+#   by one character.
+#
+#   The runner masks every occurrence of a secret value in job output -- on this
+#   instance that value is the account name, so a plain
+#   `cnb.cool/<owner>/...` link reaches the summary as `cnb.cool/***/...`.
+#   Encoding one character of the owner keeps the URL valid (CNB decodes it,
+#   verified) and no longer matches the masker.
+ci_cnb_link_base() {
+	local owner repo first rest hex
+	owner="${CNB_REPO:-shirkneko/sukisu-result}"
+	owner="${owner%%/*}"
+	repo="${CNB_REPO:-shirkneko/sukisu-result}"
+	repo="${repo#*/}"
+	first="${owner%"${owner#?}"}"
+	rest="${owner#?}"
+	hex="$(printf '%s' "$first" | od -An -tx1 | tr -d ' \n')"
+	[ -n "$hex" ] || {
+		printf '%s/%s\n' "${CNB_WEB:-https://cnb.cool}" "$owner/$repo"
+		return 0
+	}
+	printf '%s/%%%s%s/%s\n' "${CNB_WEB:-https://cnb.cool}" "$hex" "$rest" "$repo"
+}
+
 # ci_summary_artifacts NAME...
-#   Job Summary: rendered above the job log by Forgejo. One row per artifact with
-#   the download link (Forgejo serves artifacts at /actions/runs/<run_number>/artifacts/<name>).
+#   Job Summary: one row per artifact with its CNB download URL. CNB is where the
+#   artifacts actually live (release `ci-<run_id>`), so the link resolves as soon
+#   as the producer archived the file; nothing is copied back to Forgejo.
 ci_summary_artifacts() {
 	local summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
 	[ -n "$summary" ] || return 0
-	local site="${FORGEJO_PUBLIC_URL:-https://git.zako.shirkneko.top:20004}"
-	local run="${site}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_NUMBER:-${GITHUB_RUN_ID}}"
+	local name base=""
+	if cnb_enabled; then
+		base="$(ci_cnb_link_base)/-/releases/download/$(ci_artifact_cnb_tag "${GITHUB_RUN_ID:-local}")"
+	fi
 	{
 		echo "## 构建产物"
 		echo
-		echo "| Artifact | 下载 |"
-		echo "| --- | --- |"
-		local name
-		for name in "$@"; do
-			echo "| \`${name}\` | [下载](${run}/artifacts/${name}) |"
-		done
-		echo
-		echo "[运行详情](${run})"
+		if [ -n "$base" ]; then
+			echo "| Artifact | 下载 |"
+			echo "| --- | --- |"
+			for name in "$@"; do
+				echo "| \`${name}\` | [下载](${base}/${name}.tar.gz) |"
+			done
+		else
+			echo "| Artifact |"
+			echo "| --- |"
+			for name in "$@"; do
+				echo "| \`${name}\` |"
+			done
+			echo
+			echo "> 本次运行的产物只归档在 \`/ci\` 上（没有 CNB token）。"
+		fi
 	} >> "$summary"
 }

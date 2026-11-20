@@ -56,3 +56,4 @@ jobs:
       expected_hash: ${{ inputs.expected_hash || '' }}
       version_code: ${{ inputs.version_code || '' }}
       release_build: ${{ inputs.release_build }}
+    secrets: inherit

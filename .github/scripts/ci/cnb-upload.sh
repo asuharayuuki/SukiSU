@@ -10,11 +10,12 @@
 #   CNB_REPO                 default shirkneko/sukisu-result
 #   CNB_API                  default https://api.cnb.cool
 #   CNB_NAME                 default CNB_TAG
-#   CNB_BODY_FILE            release notes (also copied as an asset)
+#   CNB_BODY_FILE            release notes
 #   CNB_PRERELEASE           true/false, default false
 #   CNB_MAKE_LATEST          true/false, default false
 #   CNB_TARGET_COMMITISH     branch/commit for a new tag, default main
 #   CNB_ASSET_PREFIX         optional asset name prefix
+#   CNB_CLEAR_ASSETS         true/false, default true; false keeps existing assets
 set -euo pipefail
 
 if [ -z "${CNB_TOKEN:-}" ]; then
@@ -22,8 +23,6 @@ if [ -z "${CNB_TOKEN:-}" ]; then
   exit 0
 fi
 
-API="${CNB_API:-https://api.cnb.cool}"
-REPO="${CNB_REPO:-shirkneko/sukisu-result}"
 TAG="${CNB_TAG:?CNB_TAG is required}"
 NAME="${CNB_NAME:-$TAG}"
 ASSETS="${CNB_ASSETS_DIR:?CNB_ASSETS_DIR is required}"
@@ -36,119 +35,36 @@ PREFIX="${CNB_ASSET_PREFIX:-}"
 command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 1; }
 test -d "$ASSETS" || { echo "asset directory missing: $ASSETS" >&2; exit 1; }
 
+# The API calls live in cnb.sh, shared with the artifact transport in common.sh.
+# shellcheck disable=SC1091  # path is computed from $0; cnb.sh is checked alone
+. "$(dirname "$0")/cnb.sh"
+
 BODY=""
 [ -n "$BODY_FILE" ] && [ -f "$BODY_FILE" ] && BODY="$(cat "$BODY_FILE")"
 
-AUTH=(-H "Authorization: Bearer ${CNB_TOKEN}" -H "Accept: application/vnd.cnb.api+json")
-BASE="${API}/${REPO}"
-WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+release_id="$(cnb_release_ensure "$TAG" "$NAME" "$TARGET_COMMITISH" "$BODY" \
+  "$PRERELEASE" "$MAKE_LATEST")"
+echo "CNB release ${TAG} id=${release_id}"
 
-release_json="$WORK/release.json"
-release_url="${BASE}/-/releases/tags/${TAG}"
-status="$(curl -sS --connect-timeout 10 --max-time 60 -o "$release_json" \
-  -w '%{http_code}' "${AUTH[@]}" "$release_url" || true)"
-echo "CNB release ${TAG}: HTTP ${status}"
-
-release_id=""
-if [ "$status" = "200" ]; then
-  release_id="$(jq -r '.id // empty' "$release_json")"
-  echo "CNB release existing id=${release_id}"
-else
-  create_payload="$(jq -nc \
-    --arg tag "$TAG" --arg target "$TARGET_COMMITISH" --arg name "$NAME" \
-    --arg body "$BODY" --arg latest "$MAKE_LATEST" \
-    --argjson pre "$PRERELEASE" \
-    '{tag_name:$tag,target_commitish:$target,name:$name,body:$body,
-      draft:false,prerelease:$pre,make_latest:$latest}')"
-  status="$(curl -sS --connect-timeout 10 --max-time 60 -o "$release_json" \
-    -w '%{http_code}' "${AUTH[@]}" -H 'Content-Type: application/json' \
-    -X POST -d "$create_payload" "${BASE}/-/releases" || true)"
-  echo "CNB release create: HTTP ${status}"
-  release_id="$(jq -r '.id // empty' "$release_json" 2>/dev/null || true)"
-  if [ -z "$release_id" ]; then
-    # A concurrent run may have created it first.
-    curl -sS --connect-timeout 10 --max-time 60 "${AUTH[@]}" \
-      "$release_url" -o "$release_json"
-    release_id="$(jq -r '.id // empty' "$release_json" 2>/dev/null || true)"
-  fi
-fi
-test -n "$release_id" && [ "$release_id" != "null" ] || {
-  echo "could not resolve CNB release id" >&2
-  head -c 500 "$release_json" >&2 || true
-  exit 1
-}
-
-if [ "$status" = "200" ] || [ -n "${BODY_FILE:-}" ] || [ "$NAME" != "$TAG" ]; then
-  patch_payload="$(jq -nc --arg name "$NAME" --arg body "$BODY" \
-    --arg latest "$MAKE_LATEST" --argjson pre "$PRERELEASE" \
-    '{name:$name,body:$body,prerelease:$pre,make_latest:$latest}')"
-  code="$(curl -sS --connect-timeout 10 --max-time 60 -o "$WORK/patch.json" \
-    -w '%{http_code}' "${AUTH[@]}" -H 'Content-Type: application/json' \
-    -X PATCH -d "$patch_payload" "${BASE}/-/releases/${release_id}" || true)"
-  echo "CNB release update: HTTP ${code}"
-  [ "$code" = "200" ] || {
-    head -c 500 "$WORK/patch.json" >&2 || true
-    exit 1
-  }
-fi
-
+# Re-runs replace the previous content instead of piling up assets.
 if [ "${CNB_CLEAR_ASSETS:-true}" != "false" ]; then
-  echo "clearing existing CNB release assets"
-  curl -sS --connect-timeout 10 --max-time 60 "${AUTH[@]}" \
-    "${BASE}/-/releases/${release_id}" -o "$release_json"
-  for asset_id in $(jq -r '.assets[]?.id' "$release_json"); do
-    code="$(curl -sS --connect-timeout 10 --max-time 60 -o /dev/null \
-      -w '%{http_code}' "${AUTH[@]}" \
-      -X DELETE "${BASE}/-/releases/${release_id}/assets/${asset_id}" || true)"
-    case "$code" in
-      200|204|404) ;;
-      *) echo "failed to delete CNB asset ${asset_id}: HTTP ${code}" >&2; exit 1 ;;
-    esac
-  done
+  cnb_clear_assets "$TAG"
 fi
-
-upload_one() {
-  local file="$1" rel name size url_json upload_url verify_url code
-  rel="${file#"$ASSETS"/}"
-  name="${PREFIX}${rel//\//__}"
-  size="$(stat -c%s "$file")"
-  url_json="$WORK/upload-url.json"
-  code="$(curl -sS --connect-timeout 10 --max-time 60 -o "$url_json" \
-    -w '%{http_code}' "${AUTH[@]}" -H 'Content-Type: application/json' \
-    -X POST -d "$(jq -nc --arg name "$name" --argjson size "$size" \
-      '{asset_name:$name,size:$size,overwrite:true}')" \
-    "${BASE}/-/releases/${release_id}/asset-upload-url" || true)"
-  [ "$code" = "201" ] || [ "$code" = "200" ] || {
-    echo "upload-url failed for ${name}: HTTP ${code}" >&2
-    head -c 500 "$url_json" >&2 || true
-    return 1
-  }
-  upload_url="$(jq -r '.upload_url // empty' "$url_json")"
-  verify_url="$(jq -r '.verify_url // empty' "$url_json")"
-  test -n "$upload_url" && test -n "$verify_url" || {
-    echo "upload URL missing for ${name}" >&2
-    return 1
-  }
-  curl -fsS --retry 4 --retry-all-errors --connect-timeout 20 --max-time 3600 \
-    -X PUT -H 'Content-Type: application/octet-stream' \
-    --data-binary @"$file" "$upload_url" >/dev/null
-  case "$verify_url" in
-    http://* | https://*) ;;
-    *) verify_url="${API}${verify_url}" ;;
-  esac
-  code="$(curl -sS --connect-timeout 10 --max-time 120 -o "$WORK/verify.json" \
-    -w '%{http_code}' "${AUTH[@]}" -X POST "$verify_url" || true)"
-  [ "$code" = "200" ] || [ "$code" = "201" ] || {
-    echo "verify failed for ${name}: HTTP ${code}" >&2
-    head -c 500 "$WORK/verify.json" >&2 || true
-    return 1
-  }
-  echo "uploaded ${name} (${size} bytes)"
-}
 
 echo "uploading CNB assets from ${ASSETS}"
-while IFS= read -r -d '' file; do
-  upload_one "$file"
-done < <(find "$ASSETS" -type f -print0 | sort -z)
+find "$ASSETS" -type f -print0 | sort -z | while IFS= read -r -d '' file; do
+  rel="${file#"$ASSETS"/}"
+  # Subdirectories are flattened with __ so every asset name stays one segment.
+  asset="${PREFIX}${rel//\//__}"
+  size="$(wc -c <"$file" | tr -d ' ')"
+  cnb_asset_put "$file" "$asset" "$release_id"
+  echo "uploaded ${asset} (${size} bytes)"
+done
+
+# Keep the title and body in step with the build even when the release already
+# existed; the app parses the version out of the name.
+if [ "$NAME" != "$TAG" ] || [ -n "$BODY_FILE" ]; then
+  cnb_release_patch "$TAG" "$NAME" "$BODY" "$PRERELEASE" "$MAKE_LATEST"
+fi
+
 echo "CNB upload complete: ${TAG}"

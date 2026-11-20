@@ -160,115 +160,10 @@ jobs:
           } > "$published/notes.md"
           echo "published to ${published}"
 
-      # The manager's update check reads the release through the Forgejo API, so
-      # the APKs have to exist as release assets, not only on the runner host.
-      - name: Publish the manager-ci release
-        if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
-        env:
-          # Dedicated token with write:repository. The built-in GITHUB_TOKEN is
-          # only a fallback: it may lack release permissions on this instance.
-          API_TOKEN: ${{ secrets.RELEASE_API_TOKEN || vars.RELEASE_API_TOKEN || secrets.GITHUB_TOKEN }}
-        run: |
-          set -eu
-          # GITHUB_SERVER_URL is the EasyTier address (http://100.0.0.11:3000),
-          # which a job container cannot reach -- the same reason every checkout
-          # uses the public endpoint.
-          site="${FORGEJO_PUBLIC_URL:-https://git.zako.shirkneko.top:20004}"
-          api="${site}/api/v1/repos/${GITHUB_REPOSITORY}"
-          auth="Authorization: token ${API_TOKEN}"
-          tag=manager-ci
-          echo "api=${api} token_len=${#API_TOKEN}"
-
-          # The public endpoint goes through a tunnel that occasionally drops a
-          # connection ("empty reply from server", curl 52). Idempotent calls retry
-          # on any error; calls that create something only retry a refused
-          # connection, and the caller re-reads the state afterwards.
-          net() {
-            curl -sS --retry 5 --retry-all-errors --retry-delay 2 \
-              --connect-timeout 10 --max-time 120 "$@"
-          }
-          net_once() {
-            curl -sS --retry 5 --retry-connrefused --retry-delay 2 \
-              --connect-timeout 10 --max-time 120 "$@"
-          }
-
-          apk="$(find apks/split -type f -name '*.apk' | head -n 1)"
-          # SukiSU_Nova_<sha>_35001-arm64-v8a-release.apk -> 35001
-          base="$(basename "$apk")"
-          code="${base##*_}"
-          code="${code%%-*}"
-          # The app parses the version out of the release title, so a name that
-          # does not carry one must fail here rather than publish a broken release.
-          case "$code" in
-            '' | *[!0-9]*) echo "cannot parse the version code from ${base}" >&2; exit 1 ;;
-          esac
-
-          release="$api/releases/tags/$tag"
-          status="$(curl -sS --connect-timeout 10 --max-time 60 -o /tmp/release.json \
-            -w '%{http_code}' -H "$auth" "$release" || true)"
-          echo "existing release: HTTP ${status}"
-          if [ "$status" = "200" ]; then
-            id="$(jq -r '.id' /tmp/release.json)"
-          else
-            payload="$(jq -nc --arg sha "$GITHUB_SHA" --arg name "Manager CI (${code})" \
-              '{tag_name: "manager-ci", target_commitish: $sha, name: $name, prerelease: true,
-                body: "Rolling CI build from main. Experimental; may be unstable."}')"
-            net_once -X POST -H "$auth" -H 'Content-Type: application/json' \
-              -d "$payload" "$api/releases" -o /tmp/release.json \
-              -w 'create: HTTP %{http_code}\n' || true
-            # A lost response can leave the release behind anyway; read it back.
-            curl -sS --connect-timeout 10 --max-time 60 -H "$auth" "$release" \
-              -o /tmp/release.json
-            id="$(jq -r '.id' /tmp/release.json)"
-          fi
-          test -n "$id" && [ "$id" != "null" ]
-
-          # Replace the assets of the previous build; the names carry the version.
-          for asset_id in $(jq -r '.assets[].id' /tmp/release.json); do
-            # Forgejo 17 nests the asset under its release; /releases/assets/{id} is 404.
-            net -f -X DELETE -H "$auth" "$api/releases/${id}/assets/$asset_id" >/dev/null
-          done
-          for f in apks/split/*.apk; do
-            name="$(basename "$f")"
-            net_once -f -X POST -H "$auth" \
-              -F "attachment=@${f}" "$api/releases/${id}/assets?name=${name}" >/dev/null
-            echo "uploaded ${name}"
-          done
-
-          # Keep the title in step with the build. Derive it from the uploaded
-          # asset names (highest version) rather than the first artifact, which
-          # could be a stale split and leave the title behind the assets.
-          asset_code=""
-          for f in apks/split/*.apk; do
-            n="$(basename "$f")"
-            c="${n##*_}"
-            c="${c%%-*}"
-            case "$c" in
-              '' | *[!0-9]*) continue ;;
-            esac
-            if [ -z "$asset_code" ] || [ "$c" -gt "$asset_code" ]; then
-              asset_code="$c"
-            fi
-          done
-          test -n "$asset_code"
-          code="$asset_code"
-          payload="$(jq -nc --arg sha "$GITHUB_SHA" --arg name "Manager CI (${code})" \
-            '{tag_name: "manager-ci", target_commitish: $sha, name: $name,
-              prerelease: true, body: "Rolling CI build from main. Experimental; may be unstable."}')"
-          net -f -X PATCH -H "$auth" -H 'Content-Type: application/json' \
-            -d "$payload" "$api/releases/${id}" >/dev/null
-
-          # Never leave a stale title behind silently: the app parses the version
-          # from here (and now also tolerates a stale title by reading assets).
-          curl -sS --connect-timeout 10 --max-time 60 -H "$auth" \
-            "$api/releases/tags/${tag}" -o /tmp/release-title.json
-          actual="$(jq -r '.name // ""' /tmp/release-title.json)"
-          test "$actual" = "Manager CI (${code})" || {
-            echo "release title mismatch: got '${actual}', expected 'Manager CI (${code})'" >&2
-            exit 1
-          }
-          echo "release ${tag} updated: ${actual}"
-
+      # CNB is the upload target for the APKs: its release assets are served
+      # from cnb.cool and the upload goes machine-to-machine, so the tunnel to
+      # this host only ever sees small API calls. Every later step works from
+      # what CNB holds.
       - name: Upload signed manager CI to CNB
         if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
         env:
@@ -298,6 +193,110 @@ jobs:
             git log -20 --format='- %s (`%h`)'
           } > cnb-notes.md
           bash .github/scripts/ci/cnb-upload.sh
+
+      # The APKs stay on CNB: pushing them into the release here means ~43 MB
+      # through the tunnel at ~90 KB/s, which never finished. The Forgejo release
+      # therefore carries links to the CNB assets instead of copies of them.
+      #
+      # Consequence: the manager's Forgejo update source has no APK to offer for
+      # this tag; its CNB source (the default) does.
+      - name: Point the manager-ci release at CNB
+        if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
+        env:
+          # Dedicated token with write:repository. The built-in GITHUB_TOKEN is
+          # only a fallback: it may lack release permissions on this instance.
+          API_TOKEN: ${{ secrets.RELEASE_API_TOKEN || vars.RELEASE_API_TOKEN || secrets.GITHUB_TOKEN }}
+          CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
+          CNB_TAG: manager-ci
+          CNB_WEB: ${{ vars.CNB_WEB || 'https://cnb.cool' }}
+        run: |
+          set -eu
+          # GITHUB_SERVER_URL is the EasyTier address (http://100.0.0.11:3000),
+          # which a job container cannot reach -- the same reason every checkout
+          # uses the public endpoint.
+          site="${FORGEJO_PUBLIC_URL:-https://git.zako.shirkneko.top:20004}"
+          api="${site}/api/v1/repos/${GITHUB_REPOSITORY}"
+          auth="Authorization: token ${API_TOKEN}"
+          tag=manager-ci
+          echo "api=${api} token_len=${#API_TOKEN}"
+
+          net() {
+            curl -sS --retry 5 --retry-all-errors --retry-delay 2 \
+              --connect-timeout 10 --max-time 120 "$@"
+          }
+          net_once() {
+            curl -sS --retry 5 --retry-connrefused --retry-delay 2 \
+              --connect-timeout 10 --max-time 120 "$@"
+          }
+
+          src=apks/split
+          apk="$(find "$src" -type f -name '*.apk' | head -n 1)"
+          test -n "$apk"
+          # SukiSU_Nova_<ref>_35001-arm64-v8a-release.apk -> 35001
+          base="$(basename "$apk")"
+          code="${base##*_}"
+          code="${code%%-*}"
+          # The app parses the version out of the release title, so a name that
+          # does not carry one must fail here rather than publish a broken release.
+          case "$code" in
+            '' | *[!0-9]*) echo "cannot parse the version code from ${base}" >&2; exit 1 ;;
+          esac
+
+          # One link, not a table: the CNB release page lists every split, and
+          # this release stores no bytes any more.
+          body="$(printf 'Rolling CI build from main. Experimental; may be unstable.\n\n下载 / Download: %s/%s/-/releases/tag/%s\n' \
+            "$CNB_WEB" "$CNB_REPO" "$CNB_TAG")"
+
+          release="$api/releases/tags/$tag"
+          status="$(curl -sS --connect-timeout 10 --max-time 60 -o /tmp/release.json \
+            -w '%{http_code}' -H "$auth" "$release" || true)"
+          echo "existing release: HTTP ${status}"
+          if [ "$status" = "200" ]; then
+            id="$(jq -r '.id' /tmp/release.json)"
+          else
+            payload="$(jq -nc --arg sha "$GITHUB_SHA" --arg name "Manager CI (${code})" \
+              --arg body "$body" \
+              '{tag_name: "manager-ci", target_commitish: $sha, name: $name, prerelease: true,
+                body: $body}')"
+            net_once -X POST -H "$auth" -H 'Content-Type: application/json' \
+              -d "$payload" "$api/releases" -o /tmp/release.json \
+              -w 'create: HTTP %{http_code}\n' || true
+            # A lost response can leave the release behind anyway; read it back.
+            curl -sS --connect-timeout 10 --max-time 60 -H "$auth" "$release" \
+              -o /tmp/release.json
+            id="$(jq -r '.id' /tmp/release.json)"
+          fi
+          test -n "$id" && [ "$id" != "null" ]
+
+          # Drop the copies from previous builds: they are stale, and the links in
+          # the body are the only downloads this release offers now.
+          for asset_id in $(jq -r '.assets[]?.id' /tmp/release.json); do
+            # Forgejo 17 nests the asset under its release; /releases/assets/{id} is 404.
+            net -f -X DELETE -H "$auth" "$api/releases/${id}/assets/$asset_id" >/dev/null
+          done
+
+          payload="$(jq -nc --arg sha "$GITHUB_SHA" --arg name "Manager CI (${code})" \
+            --arg body "$body" \
+            '{tag_name: "manager-ci", target_commitish: $sha, name: $name,
+              prerelease: true, body: $body}')"
+          net -f -X PATCH -H "$auth" -H 'Content-Type: application/json' \
+            -d "$payload" "$api/releases/${id}" >/dev/null
+
+          # Never leave a stale title or a stale asset behind silently: the app
+          # parses the version from the title, and an old APK would be a trap.
+          curl -sS --connect-timeout 10 --max-time 60 -H "$auth" \
+            "$api/releases/tags/${tag}" -o /tmp/release-title.json
+          actual="$(jq -r '.name // ""' /tmp/release-title.json)"
+          left="$(jq -r '.assets | length' /tmp/release-title.json)"
+          test "$actual" = "Manager CI (${code})" || {
+            echo "release title mismatch: got '${actual}', expected 'Manager CI (${code})'" >&2
+            exit 1
+          }
+          test "$left" = "0" || {
+            echo "release still carries ${left} asset(s); stale APKs must not stay" >&2
+            exit 1
+          }
+          echo "release ${tag} updated: ${actual}; APKs live on CNB only"
 
       - name: Trigger CNB Telegram delivery
         if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}

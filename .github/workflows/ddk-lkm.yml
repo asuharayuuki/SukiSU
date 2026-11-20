@@ -55,6 +55,9 @@ jobs:
       EXPECTED_HASH: ${{ inputs.expected_hash }}
       KSU_VERSION_CODE: ${{ inputs.version_code }}
       RELEASE_BUILD: ${{ inputs.release_build }}
+      # Artifacts travel through CNB; without a token they stay on /ci only.
+      CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+      CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
 
     steps:
       - name: Checkout source code
@@ -243,59 +246,8 @@ jobs:
           ci_artifact_put "x86_64-${KMI}-lkm" \
             "${GITHUB_WORKSPACE}/out/x86_64/${KMI}_kernelsu.ko"
 
-      # GitHub-style artifact: Forgejo stores it server-side and lists it on the
-      # run page. The DDK image has no node, so it uses the copy in /ci/tools.
-      - name: Provide node and the action sources
-        run: |
-          set -eux
-          # act runs JS actions with `node` from the container PATH, and it would
-          # otherwise clone every `uses:` action from data.forgejo.org. Both are
-          # pre-seeded in the shared /ci volume, so a job needs no network for
-          # either.
-          found=
-          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
-            if [ -x "$dir/node" ]; then
-              echo "$dir" >> "$GITHUB_PATH"
-              found=1
-              break
-            fi
-          done
-          [ -n "$found" ] || { echo "node not found (tool cache and /ci/tools/node)" >&2; exit 1; }
-          mkdir -p "$GITHUB_WORKSPACE/.ci-actions"
-          for action in upload-artifact download-artifact; do
-            rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
-            cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
-          done
-      - name: Collect the kernel modules
-        run: |
-          set -eux
-          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
-          rm -rf "$GITHUB_WORKSPACE/upload"
-          mkdir -p "$GITHUB_WORKSPACE/upload"
-          cp -a "$(ci_artifact_path "aarch64-${KMI}-lkm")" \
-                "$GITHUB_WORKSPACE/upload/aarch64-${KMI}-lkm"
-          cp -a "$(ci_artifact_path "x86_64-${KMI}-lkm")" \
-                "$GITHUB_WORKSPACE/upload/x86_64-${KMI}-lkm"
-
-      # Per-architecture artifact names match the directory names the consumer
-      # jobs expect, so `download-artifact` recreates the same layout.
-      - name: Upload the aarch64 module
-        uses: ./.ci-actions/upload-artifact
-        with:
-          name: aarch64-${{ inputs.kmi }}-lkm
-          path: upload/aarch64-${{ inputs.kmi }}-lkm
-          if-no-files-found: error
-
-
-
-      - name: Upload the x86_64 module
-        uses: ./.ci-actions/upload-artifact
-        with:
-          name: x86_64-${{ inputs.kmi }}-lkm
-          path: upload/x86_64-${{ inputs.kmi }}-lkm
-          if-no-files-found: error
-
-
+      # The job summary links straight at the CNB archive ci_artifact_put wrote;
+      # nothing is copied back to Forgejo.
 
       - name: Write the job summary
         run: |

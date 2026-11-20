@@ -118,29 +118,38 @@ jobs:
 ## 跨 job 传产物
 
 不要用 `/ci` 在 job 之间传文件：两台 runner 各有自己的 `/ci`，任务可能被分到不同机器。
-统一用 artifact：
+产物统一交给 `common.sh`：
 
 ```yaml
-  package:
-    needs: [build]
-    runs-on: ubuntu-latest
+    env:
+      # 产物经 CNB 中转；没有 token 时只留在 /ci 并告警
+      CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+      CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
+
     steps:
-      - name: Provide node and the action sources
-        # 同上
+      - name: Upload the build artifact
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_artifact_put app-release build/app-release.apk
 
-      # 不带 name 就是本次运行的全部 artifact，各落在 artifacts/<artifact 名>/
+      # 消费端（单名 / 全部）
       - name: Download the build artifacts
-        uses: ./.ci-actions/download-artifact
-        with:
-          path: artifacts
-
-      # 需要单个时：
-      # - name: Download the release APK
-      #   uses: ./.ci-actions/download-artifact
-      #   with:
-      #     name: app-release
-      #     path: artifacts/app-release
+        run: |
+          set -eux
+          . .github/scripts/ci/common.sh
+          ci_download_artifact app-release artifacts/app-release
+          # 或者：ci_download_all_artifacts artifacts
 ```
+
+查找顺序：`/ci` 卷 → EasyTier peer（18080）→ CNB（`ci-<run_id>` release 上的
+`<name>.tar.gz`）→ Forgejo artifact API。CNB 是跨机器、跨 run 都能用的那一层，
+大文件也走它，不要改回让每个 job 自己往 Forgejo 传。
+
+产物就留在 CNB 上，不再回传到 Forgejo：job summary 里的下载链接直接指
+`https://cnb.cool/<repo>/-/releases/download/ci-<run_id>/<name>.tar.gz`，
+`manager-ci` 的 release body 也只是一张指向 CNB 的链接表（assets 会被清空，
+避免留下过期 APK）。Forgejo 上只保留 release 的标题和正文（管理器要解析版本号）。
 
 约定：
 
@@ -148,7 +157,9 @@ jobs:
   `sukisu-lkm-aarch64-android14-6.1`、`sukisu-ksud-aarch64-linux-android`、
   `sukisu-manager`；
 - 下载目录统一 `artifacts/`，文件名即 artifact 内的相对路径；
-- 跨 run 取 artifact 不支持（Forgejo #8004），只能在同一次运行内下载。
+- 新增产物不需要改任何工作流：`ci_artifact_put` 会归档到 CNB，summary 里的
+  链接自动生效（在 job 里调 `ci_summary_artifacts <name>...`）。
+- 跨 run 用 `ci_download_artifact NAME DEST RUN_ID`（Forgejo 自带 action 不支持跨 run）。
 
 ## Job Summary（渲染在 job 日志上方）
 
@@ -267,7 +278,8 @@ repos:
 | 子模块拉不下来 | `git submodule set-url` 改成实例上的镜像 |
 | 步骤名显示 `./.ci-actions/...` | 给每个 `uses:` 步骤写 `name` |
 | 上传 401 | 用对权限的令牌；内置 `GITHUB_TOKEN` 没有 package 权限 |
-| 跨 runner 找不到产物 | 不要用 `/ci`，用 artifact |
+| 跨 runner 找不到产物 | 用 `ci_artifact_put`（经 CNB 中转），不要只写 `/ci` |
+| 产物下载链接 404 | 链接指向 CNB 的 `ci-<run_id>`；先确认这个 job 的 `ci_artifact_put` 真的成功了 |
 | 日志暴露令牌 | 令牌相关命令前后 `set +x` / `set -x` |
 | 任务被分到哪台机器 | 标签相同的 runner 先到先得，没有负载均衡配置 |
 
