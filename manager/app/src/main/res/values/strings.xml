@@ -1527,8 +1527,10 @@
     <string name="dynamic_wallpaper_title">Dynamic Wallpaper</string>
     <string name="dynamic_wallpaper_settings_summary">MP4 or animated WebP, up to 308 MB</string>
     <string name="dynamic_wallpaper_limit">One file up to 308 MB. Videos stay muted unless you turn sound on.</string>
+    <string name="dynamic_home_card_limit">One file up to 308 MB. The card background is always muted.</string>
     <string name="dynamic_wallpaper_pending">Pending</string>
     <string name="dynamic_wallpaper_pending_title">Apply dynamic wallpaper?</string>
+    <string name="dynamic_home_card_pending_title">Apply card background?</string>
     <string name="dynamic_wallpaper_empty_title">No dynamic wallpaper yet</string>
     <string name="dynamic_wallpaper_empty_summary">Choose an MP4 video or animated WebP to play behind the app.</string>
     <string name="dynamic_wallpaper_preview_failed_title">Can\'t play this wallpaper</string>
@@ -1536,11 +1538,14 @@
     <string name="dynamic_wallpaper_retry">Retry preview</string>
     <string name="dynamic_wallpaper_pick">Choose MP4 / WebP</string>
     <string name="dynamic_wallpaper_replace">Replace wallpaper</string>
+    <string name="dynamic_home_card_replace">Replace card background</string>
     <string name="dynamic_wallpaper_apply">Apply</string>
     <string name="dynamic_wallpaper_discard">Discard</string>
     <string name="dynamic_wallpaper_remove">Remove dynamic wallpaper</string>
     <string name="dynamic_wallpaper_remove_title">Remove dynamic wallpaper?</string>
+    <string name="dynamic_home_card_remove_title">Remove card background?</string>
     <string name="dynamic_wallpaper_remove_message">The video or animated image will be deleted from the app. The static background stays unchanged.</string>
+    <string name="dynamic_home_card_remove_message">The video or animated image will be removed from the home card. The static card image stays unchanged.</string>
     <string name="dynamic_wallpaper_mute">Mute video</string>
     <string name="dynamic_wallpaper_mute_summary">Play the background video without sound</string>
     <string name="dynamic_wallpaper_format_mp4">MP4</string>
@@ -1549,6 +1554,7 @@
     <string name="dynamic_wallpaper_unsupported">Only MP4 and WebP files are supported</string>
     <string name="dynamic_wallpaper_import_failed">Couldn\'t import the wallpaper</string>
     <string name="dynamic_wallpaper_apply_failed">Couldn\'t apply the wallpaper</string>
+    <string name="dynamic_home_card_apply_failed">Couldn\'t apply the card background</string>
     <string name="settings_home_card_image">Status card background</string>
     <string name="settings_home_card_image_default">Using the card color</string>
     <string name="settings_home_card_image_set">Image selected</string>

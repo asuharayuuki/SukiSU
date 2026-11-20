@@ -45,6 +45,7 @@ internal const val KEY_HOME_CARD_IMAGE_PATH = "home_card_image_path"
 internal const val KEY_DYNAMIC_WALLPAPER_FPS = "dynamic_wallpaper_fps"
 internal const val KEY_DYNAMIC_WALLPAPER_SPEED = "dynamic_wallpaper_speed"
 internal const val KEY_DYNAMIC_HOME_CARD_PATH = "dynamic_home_card_path"
+internal const val KEY_DYNAMIC_HOME_CARD_UPDATED_AT = "dynamic_home_card_updated_at"
 internal const val KEY_DYNAMIC_HOME_CARD_FIT = "dynamic_home_card_fit"
 internal const val KEY_DYNAMIC_HOME_CARD_ZOOM = "dynamic_home_card_zoom"
 internal const val KEY_DYNAMIC_HOME_CARD_OFFSET_X = "dynamic_home_card_offset_x"
@@ -156,12 +157,12 @@ class SettingsRepositoryImpl : SettingsRepository {
         set(value) = prefs.edit { putFloat("dynamic_wallpaper_speed", value) }
 
     override var dynamicHomeCardPath: String
-        get() = prefs.getString("dynamic_home_card_path", "") ?: ""
-        set(value) = prefs.edit { putString("dynamic_home_card_path", value) }
+        get() = prefs.getString(KEY_DYNAMIC_HOME_CARD_PATH, "") ?: ""
+        set(value) = prefs.edit { putString(KEY_DYNAMIC_HOME_CARD_PATH, value) }
 
     override var dynamicHomeCardUpdatedAt: Long
-        get() = prefs.getLong("dynamic_home_card_updated_at", 0L)
-        set(value) = prefs.edit { putLong("dynamic_home_card_updated_at", value) }
+        get() = prefs.getLong(KEY_DYNAMIC_HOME_CARD_UPDATED_AT, 0L)
+        set(value) = prefs.edit { putLong(KEY_DYNAMIC_HOME_CARD_UPDATED_AT, value) }
 
     override var dynamicHomeCardFit: Int
         get() = prefs.getInt("dynamic_home_card_fit", 1)

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -182,14 +183,16 @@ fun ImmersiveStatusCardMiuix(
                     .clickable(enabled = clickEnabled, onClick = onClick)
             ) {
                 if (hasDynamicCard) {
-                    DynamicWallpaperBackground(
-                        path = state.dynamicHomeCardPath,
-                        muted = true,
-                        transform = state.dynamicHomeCardTransform,
-                        fps = state.dynamicPlaybackFps,
-                        speed = state.dynamicPlaybackSpeed,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    key(state.dynamicHomeCardPath, state.dynamicHomeCardUpdatedAt) {
+                        DynamicWallpaperBackground(
+                            path = state.dynamicHomeCardPath,
+                            muted = true,
+                            transform = state.dynamicHomeCardTransform,
+                            fps = state.dynamicPlaybackFps,
+                            speed = state.dynamicPlaybackSpeed,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 } else {
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)

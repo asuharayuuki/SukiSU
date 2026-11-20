@@ -2,7 +2,9 @@ package com.sukisu.nova.ui.screen.dynamicwallpaper
 
 import android.text.format.Formatter
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,15 +42,20 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sukisu.nova.R
 import com.sukisu.nova.ui.component.background.DynamicWallpaperFit
 import com.sukisu.nova.ui.component.miuix.AppCard
+import com.sukisu.nova.ui.theme.isInDarkTheme
+import com.sukisu.nova.ui.util.HomeLayout
+import com.sukisu.nova.ui.util.HomeStatusStyle
 import com.sukisu.nova.ui.util.ImageStorage
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -79,7 +86,8 @@ fun DynamicWallpaperScreenMiuix(
         null -> ""
     }
     val hasPreview = state.previewPath != null
-    val mediaVisible = hasPreview && !state.rendererFailed
+    // The card target previews its media inside the card stage, never behind the whole page.
+    val mediaVisible = hasPreview && !state.rendererFailed && !state.isCard
     val topBarContentColor = if (mediaVisible) Color.White else colorScheme.onSurface
     val topBarSecondaryColor = if (mediaVisible) {
         Color.White.copy(alpha = 0.76f)
@@ -113,17 +121,6 @@ fun DynamicWallpaperScreenMiuix(
             )
         }
 
-        if (!mediaVisible) {
-            EmptyPreview(
-                rendererFailed = state.rendererFailed,
-                error = state.rendererError,
-                onRetry = actions.onRetryRenderer,
-                contentColor = topBarContentColor,
-                secondaryColor = topBarSecondaryColor,
-                modifier = Modifier.align(Alignment.Center),
-            )
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -147,7 +144,13 @@ fun DynamicWallpaperScreenMiuix(
                     )
                 }
                 Text(
-                    text = stringResource(R.string.dynamic_wallpaper_title),
+                    text = stringResource(
+                        if (state.isCard) {
+                            R.string.dynamic_home_card_title
+                        } else {
+                            R.string.dynamic_wallpaper_title
+                        }
+                    ),
                     color = topBarContentColor,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -174,7 +177,53 @@ fun DynamicWallpaperScreenMiuix(
                 }
             }
 
-            Spacer(Modifier.weight(1f))
+            if (state.isCard) {
+                DynamicHomeCardStage(
+                    state = state,
+                    actions = actions,
+                    shape = if (state.cardLayout == HomeLayout.IMMERSIVE) {
+                        RoundedCornerShape(HomeStatusStyle.BannerCorner)
+                    } else {
+                        RoundedCornerShape(CardDefaults.CornerRadius)
+                    },
+                    borderColor = if (isInDarkTheme()) {
+                        Color.White.copy(alpha = 0.28f)
+                    } else {
+                        colorScheme.onSurface.copy(alpha = 0.12f)
+                    },
+                    containerColor = colorScheme.surfaceContainer,
+                    modifier = Modifier.weight(1f),
+                    horizontalPadding = 12.dp,
+                ) { compact ->
+                    CardStageEmptyMiuix(
+                        state = state,
+                        actions = actions,
+                        compact = compact,
+                    )
+                }
+            } else if (!mediaVisible) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(
+                        modifier = Modifier.verticalScroll(rememberScrollState()),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        EmptyPreview(
+                            rendererFailed = state.rendererFailed,
+                            error = state.rendererError,
+                            onRetry = actions.onRetryRenderer,
+                            contentColor = topBarContentColor,
+                            secondaryColor = topBarSecondaryColor,
+                        )
+                    }
+                }
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
 
             AppCard(
                 modifier = Modifier
@@ -200,10 +249,12 @@ fun DynamicWallpaperScreenMiuix(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = stringResource(
-                                    if (state.hasStaged) {
-                                        R.string.dynamic_wallpaper_pending_title
-                                    } else {
-                                        R.string.dynamic_wallpaper_title
+                                    when {
+                                        state.hasStaged && state.isCard ->
+                                            R.string.dynamic_home_card_pending_title
+                                        state.hasStaged -> R.string.dynamic_wallpaper_pending_title
+                                        state.isCard -> R.string.dynamic_home_card_title
+                                        else -> R.string.dynamic_wallpaper_title
                                     }
                                 ),
                                 style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.title3,
@@ -215,7 +266,13 @@ fun DynamicWallpaperScreenMiuix(
                             ).joinToString(" · ")
                             Text(
                                 text = detail.ifEmpty {
-                                    stringResource(R.string.dynamic_wallpaper_empty_summary)
+                                    stringResource(
+                                        if (state.isCard) {
+                                            R.string.dynamic_home_card_summary
+                                        } else {
+                                            R.string.dynamic_wallpaper_empty_summary
+                                        }
+                                    )
                                 },
                                 style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.body2,
                                 color = colorScheme.onSurfaceVariantSummary,
@@ -384,10 +441,11 @@ fun DynamicWallpaperScreenMiuix(
                             Spacer(Modifier.width(6.dp))
                             Text(
                                 text = stringResource(
-                                    if (state.hasSaved) {
-                                        R.string.dynamic_wallpaper_replace
-                                    } else {
-                                        R.string.dynamic_wallpaper_pick
+                                    when {
+                                        state.isCard && state.hasSaved ->
+                                            R.string.dynamic_home_card_replace
+                                        state.hasSaved -> R.string.dynamic_wallpaper_replace
+                                        else -> R.string.dynamic_wallpaper_pick
                                     }
                                 ),
                                 fontSize = 15.sp,
@@ -408,7 +466,13 @@ fun DynamicWallpaperScreenMiuix(
                     }
 
                     Text(
-                        text = stringResource(R.string.dynamic_wallpaper_limit),
+                        text = stringResource(
+                            if (state.isCard) {
+                                R.string.dynamic_home_card_limit
+                            } else {
+                                R.string.dynamic_wallpaper_limit
+                            }
+                        ),
                         style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.footnote2,
                         color = colorScheme.onSurfaceVariantSummary,
                     )
@@ -420,14 +484,28 @@ fun DynamicWallpaperScreenMiuix(
     if (state.showRemoveConfirm) {
         WindowDialog(
             show = true,
-            title = stringResource(R.string.dynamic_wallpaper_remove_title),
+            title = stringResource(
+                if (state.isCard) {
+                    R.string.dynamic_home_card_remove_title
+                } else {
+                    R.string.dynamic_wallpaper_remove_title
+                }
+            ),
             onDismissRequest = actions.onDismissRemove,
             content = {
                 Column(
                     modifier = Modifier.padding(horizontal = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(stringResource(R.string.dynamic_wallpaper_remove_message))
+                    Text(
+                        stringResource(
+                            if (state.isCard) {
+                                R.string.dynamic_home_card_remove_message
+                            } else {
+                                R.string.dynamic_wallpaper_remove_message
+                            }
+                        )
+                    )
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -517,6 +595,62 @@ private fun EmptyPreview(
                     color = contentColor.copy(alpha = 0.16f),
                     textColor = contentColor,
                 ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CardStageEmptyMiuix(
+    state: DynamicWallpaperPreviewUiState,
+    actions: DynamicWallpaperPreviewActions,
+    compact: Boolean,
+) {
+    val failed = state.rendererFailed
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = failed, onClick = actions.onRetryRenderer)
+            .padding(horizontal = 10.dp, vertical = if (compact) 4.dp else 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.PlayCircle,
+            contentDescription = null,
+            tint = colorScheme.onSurfaceVariantSummary,
+            modifier = Modifier.size(if (compact) 22.dp else 28.dp),
+        )
+        Text(
+            text = stringResource(
+                if (failed) {
+                    R.string.dynamic_wallpaper_preview_failed_title
+                } else {
+                    R.string.dynamic_wallpaper_empty_title
+                }
+            ),
+            color = colorScheme.onSurface,
+            fontSize = if (compact) 12.sp else 13.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+        )
+        if (failed) {
+            Text(
+                text = stringResource(R.string.dynamic_wallpaper_retry),
+                color = colorScheme.primary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        } else if (!compact) {
+            Text(
+                text = stringResource(R.string.dynamic_home_card_summary),
+                color = colorScheme.onSurfaceVariantSummary,
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
