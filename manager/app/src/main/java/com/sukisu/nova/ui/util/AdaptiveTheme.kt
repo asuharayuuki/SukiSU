@@ -24,11 +24,25 @@ data class AdaptiveThemeState(
     fun variant(dark: Boolean): AdaptiveThemeVariantState = if (dark) this.dark else light
 }
 
+/**
+ * Snapshot of the shared dynamic media while a draft is being built. The files are copies under
+ * `backgrounds/adaptive_draft_dynamic_*`, so replacing the live wallpaper later cannot invalidate
+ * the draft. Both modes share one snapshot.
+ */
+@Serializable
+data class AdaptiveDynamicSnapshot(
+    val wallpaperPath: String = "",
+    val homeCardPath: String = "",
+    val wallpaperTransform: DynamicWallpaperGeometry = DynamicWallpaperGeometry(),
+    val homeCardTransform: DynamicWallpaperGeometry = DynamicWallpaperGeometry(),
+)
+
 
 @Serializable
 data class AdaptiveThemeDraft(
     val light: AdaptiveThemeVariantState? = null,
     val dark: AdaptiveThemeVariantState? = null,
+    val dynamic: AdaptiveDynamicSnapshot? = null,
 ) {
     val complete: Boolean
         get() = light != null && dark != null

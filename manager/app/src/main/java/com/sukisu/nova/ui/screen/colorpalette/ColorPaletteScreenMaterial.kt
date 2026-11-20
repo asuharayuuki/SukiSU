@@ -2126,6 +2126,10 @@ fun ColorPaletteScreenMaterial(
         hasImageEffects = state.imageEffectsPresent,
         immersiveHome = state.homeLayout == HomeLayout.IMMERSIVE,
         hasBottomBarIcons = uiState.bottomBarIcons.isNotEmpty(),
+        hasDynamicWallpaper = state.dynamicWallpaperPath.isNotBlank() ||
+            state.adaptiveDraftDynamicWallpaper,
+        hasDynamicHomeCard = state.dynamicHomeCardPath.isNotBlank() ||
+            state.adaptiveDraftDynamicHomeCard,
         onUpload = { options ->
             showExportDialog = false
             actions.onUploadTheme(context, options)

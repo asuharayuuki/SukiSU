@@ -878,6 +878,8 @@
     <string name="theme_opt_module_display">Module display (sorting and description lines)</string>
     <string name="theme_opt_other">Other</string>
     <string name="theme_opt_bottom_bar_icons">Custom bottom bar icons</string>
+    <string name="theme_opt_dynamic_wallpaper">Dynamic wallpaper</string>
+    <string name="theme_opt_dynamic_home_card">Dynamic card background</string>
     <string name="theme_upload_to_store">Upload to theme store</string>
     <string name="settings_bottom_bar_icon_home">Home tab icon</string>
     <string name="settings_bottom_bar_icon_superuser">Superuser tab icon</string>
@@ -1637,6 +1639,8 @@
     <string name="theme_reset_confirm_message">Card opacity, background blur and scrim will be reset. Theme colors, dynamic color and the custom background image are kept.</string>
     <string name="theme_export_success">Theme package exported</string>
     <string name="theme_export_failed">Failed to export the theme package</string>
+    <string name="theme_export_dynamic_skipped">Dynamic wallpapers were left out to keep the package under 128 MB</string>
+    <string name="theme_export_package_too_large">Theme package exceeds the 128 MB limit</string>
     <string name="theme_import_success">Theme package imported</string>
     <string name="theme_import_failed">Invalid theme package</string>
     <string name="theme_import_failed_restored">Theme import failed. Your previous appearance was restored.</string>

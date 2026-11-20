@@ -51,6 +51,8 @@ object ImageStorage {
     private const val MAX_WALLPAPER_VALIDATION_DIMENSION = 1024
     private const val DYNAMIC_WALLPAPER_PREFIX = "dynamic_wallpaper"
     private const val DYNAMIC_CARD_PREFIX = "dynamic_home_card"
+    private const val ADAPTIVE_DRAFT_DYNAMIC_WALLPAPER_PREFIX = "adaptive_draft_dynamic_wallpaper"
+    private const val ADAPTIVE_DRAFT_DYNAMIC_HOME_CARD_PREFIX = "adaptive_draft_dynamic_home_card"
     private const val DYNAMIC_WALLPAPER_STAGE_DIR_NAME = "dynamic_wallpaper_preview"
     private const val DYNAMIC_WALLPAPER_COPY_BUFFER = 256 * 1024
     private const val DYNAMIC_WALLPAPER_SNIFF_BYTES = 64
@@ -304,6 +306,131 @@ object ImageStorage {
             .listFiles { file -> file.name.startsWith("$DYNAMIC_CARD_PREFIX.") }
             ?.forEach { it.delete() }
     }
+
+    /** Identifies a dynamic media file from its header bytes instead of its name. */
+    fun dynamicWallpaperKindOf(file: File): DynamicWallpaperKind? {
+        if (!file.isFile || file.length() == 0L) return null
+        return runCatching {
+            file.inputStream().use { input ->
+                val header = ByteArray(DYNAMIC_WALLPAPER_SNIFF_BYTES)
+                var length = 0
+                while (length < header.size) {
+                    val read = input.read(header, length, header.size - length)
+                    if (read < 0) break
+                    length += read
+                }
+                if (length <= 0) null else sniffDynamicWallpaperKind(header, length)
+            }
+        }.getOrNull()
+    }
+
+    /**
+     * Copies a media file into one of the live dynamic slots, sniffing the container instead of
+     * trusting the source name. Used by theme package import and adaptive draft promotion.
+     */
+    suspend fun adoptDynamicWallpaper(
+        context: Context,
+        source: File,
+        targetPrefix: String = DYNAMIC_WALLPAPER_PREFIX,
+    ): DynamicWallpaperResult = withContext(Dispatchers.IO) {
+        val kind = dynamicWallpaperKindOf(source)
+            ?: return@withContext DynamicWallpaperResult.UnsupportedFormat
+        if (source.length() > DYNAMIC_WALLPAPER_MAX_BYTES) {
+            return@withContext DynamicWallpaperResult.TooLarge
+        }
+        val dir = backgroundsDir(context)
+        val target = File(dir, "$targetPrefix.${kind.extension}")
+        val temp = File(dir, "${target.name}.tmp")
+        val copied = runCatchingCancellable {
+            source.inputStream().use { input ->
+                temp.outputStream().use { output ->
+                    input.copyTo(output, DYNAMIC_WALLPAPER_COPY_BUFFER)
+                }
+            }
+            temp.length() in 1..DYNAMIC_WALLPAPER_MAX_BYTES
+        }.getOrDefault(false)
+        if (!copied) {
+            temp.delete()
+            return@withContext DynamicWallpaperResult.Failed
+        }
+        dir.listFiles { file ->
+            file.name.startsWith("$targetPrefix.") && file != temp && file != target
+        }?.forEach { it.delete() }
+        if (!temp.renameTo(target)) {
+            val moved = runCatchingCancellable {
+                if (target.exists()) target.delete()
+                temp.inputStream().use { input ->
+                    target.outputStream().use { output ->
+                        input.copyTo(output, DYNAMIC_WALLPAPER_COPY_BUFFER)
+                    }
+                }
+                target.length() > 0L
+            }.getOrDefault(false)
+            temp.delete()
+            if (!moved) {
+                target.delete()
+                return@withContext DynamicWallpaperResult.Failed
+            }
+        }
+        DynamicWallpaperResult.Ready(
+            path = target.absolutePath,
+            kind = kind,
+            sizeBytes = target.length(),
+            displayName = target.name,
+        )
+    }
+
+    suspend fun adoptDynamicHomeCard(context: Context, source: File): DynamicWallpaperResult =
+        adoptDynamicWallpaper(context, source, DYNAMIC_CARD_PREFIX)
+
+    private fun adaptiveDraftDynamicPrefix(homeCard: Boolean): String =
+        if (homeCard) ADAPTIVE_DRAFT_DYNAMIC_HOME_CARD_PREFIX else ADAPTIVE_DRAFT_DYNAMIC_WALLPAPER_PREFIX
+
+    /**
+     * Snapshots the shared live dynamic media for the adaptive draft. Both light and dark capturer
+     * runs write the same slots because a dynamic wallpaper is global, not per mode.
+     */
+    suspend fun replaceAdaptiveDraftDynamicMedia(
+        context: Context,
+        source: File,
+        homeCard: Boolean,
+    ): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val kind = dynamicWallpaperKindOf(source) ?: return@runCatching null
+            val dir = backgroundsDir(context)
+            val prefix = adaptiveDraftDynamicPrefix(homeCard)
+            val target = File(dir, "$prefix.${kind.extension}")
+            source.inputStream().use { input ->
+                target.outputStream().use { output ->
+                    input.copyTo(output, DYNAMIC_WALLPAPER_COPY_BUFFER)
+                }
+            }
+            if (target.length() == 0L) {
+                target.delete()
+                return@runCatching null
+            }
+            dir.listFiles { file -> file.name.startsWith("$prefix.") && file != target }
+                ?.forEach { it.delete() }
+            target.absolutePath
+        }.getOrNull()
+    }
+
+    suspend fun clearAdaptiveDraftDynamicMedia(context: Context, homeCard: Boolean) =
+        withContext(Dispatchers.IO) {
+            val prefix = adaptiveDraftDynamicPrefix(homeCard)
+            backgroundsDir(context)
+                .listFiles { file -> file.name.startsWith("$prefix.") }
+                ?.forEach { it.delete() }
+        }
+
+    suspend fun clearAdaptiveDraftDynamicMedia(context: Context) =
+        withContext(Dispatchers.IO) {
+            val dir = backgroundsDir(context)
+            dir.listFiles { file ->
+                file.name.startsWith("$ADAPTIVE_DRAFT_DYNAMIC_WALLPAPER_PREFIX.") ||
+                    file.name.startsWith("$ADAPTIVE_DRAFT_DYNAMIC_HOME_CARD_PREFIX.")
+            }?.forEach { it.delete() }
+        }
 
     fun discardStagedDynamicWallpaper(path: String?) {
         if (path.isNullOrBlank()) return
@@ -1103,7 +1230,9 @@ object ImageStorage {
                 file.name.startsWith(ADAPTIVE_STICKER_LIGHT_PREFIX) ||
                 file.name.startsWith(ADAPTIVE_STICKER_DARK_PREFIX) ||
                 file.name.startsWith(ADAPTIVE_DRAFT_STICKER_LIGHT_PREFIX) ||
-                file.name.startsWith(ADAPTIVE_DRAFT_STICKER_DARK_PREFIX)
+                file.name.startsWith(ADAPTIVE_DRAFT_STICKER_DARK_PREFIX) ||
+                file.name.startsWith("$ADAPTIVE_DRAFT_DYNAMIC_WALLPAPER_PREFIX.") ||
+                file.name.startsWith("$ADAPTIVE_DRAFT_DYNAMIC_HOME_CARD_PREFIX.")
         }?.forEach { it.delete() }
     }
 

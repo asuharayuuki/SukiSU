@@ -15,6 +15,10 @@
         <exclude domain="file" path="backgrounds/dynamic_home_card.webp"/>
         <exclude domain="file" path="backgrounds/dynamic_home_card.mp4.tmp"/>
         <exclude domain="file" path="backgrounds/dynamic_home_card.webp.tmp"/>
+        <exclude domain="file" path="backgrounds/adaptive_draft_dynamic_wallpaper.mp4"/>
+        <exclude domain="file" path="backgrounds/adaptive_draft_dynamic_wallpaper.webp"/>
+        <exclude domain="file" path="backgrounds/adaptive_draft_dynamic_home_card.mp4"/>
+        <exclude domain="file" path="backgrounds/adaptive_draft_dynamic_home_card.webp"/>
         <!-- TODO: Use <include> and <exclude> to control what is backed up.
         <include .../>
         <exclude .../>
@@ -36,5 +40,9 @@
         <exclude domain="file" path="backgrounds/dynamic_home_card.webp"/>
         <exclude domain="file" path="backgrounds/dynamic_home_card.mp4.tmp"/>
         <exclude domain="file" path="backgrounds/dynamic_home_card.webp.tmp"/>
+        <exclude domain="file" path="backgrounds/adaptive_draft_dynamic_wallpaper.mp4"/>
+        <exclude domain="file" path="backgrounds/adaptive_draft_dynamic_wallpaper.webp"/>
+        <exclude domain="file" path="backgrounds/adaptive_draft_dynamic_home_card.mp4"/>
+        <exclude domain="file" path="backgrounds/adaptive_draft_dynamic_home_card.webp"/>
     </device-transfer>
 </data-extraction-rules>

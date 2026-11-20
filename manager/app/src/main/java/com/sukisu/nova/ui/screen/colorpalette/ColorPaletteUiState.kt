@@ -66,6 +66,8 @@ data class ColorPaletteUiState(
     val adaptiveDraftLightCaptured: Boolean = false,
     val adaptiveDraftDarkCaptured: Boolean = false,
     val adaptiveDraftComplete: Boolean = false,
+    val adaptiveDraftDynamicWallpaper: Boolean = false,
+    val adaptiveDraftDynamicHomeCard: Boolean = false,
     // The rows below the preview.
     val themeMode: Int = 0,
     val colorStyle: String = "",

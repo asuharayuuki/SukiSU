@@ -19,6 +19,8 @@ import com.sukisu.nova.ui.util.AdaptiveThemeStore
 import com.sukisu.nova.ui.util.AppearanceOverlayStore
 import com.sukisu.nova.ui.util.BuiltinAppIcons
 import com.sukisu.nova.ui.util.CustomTextKey
+import com.sukisu.nova.ui.util.DynamicWallpaperGeometry
+import com.sukisu.nova.ui.util.DynamicWallpaperPackage
 import com.sukisu.nova.ui.util.HomeCardImageStyle
 import com.sukisu.nova.ui.util.HomeLayout
 import com.sukisu.nova.ui.util.HomeStatusAlignment
@@ -355,6 +357,8 @@ object AiThemeController : AiThemeService {
             cardBackgroundFile = currentHomeCardFile(),
             cardStickerFiles = currentStickerFiles(),
             adaptive = AdaptiveThemeStore.exportPayload(repo),
+            dynamicWallpaperFile = currentDynamicWallpaperFile(),
+            dynamicHomeCardFile = currentDynamicHomeCardFile(),
         ).getOrThrow()
         "Theme package exported to the selected location."
     }
@@ -368,6 +372,8 @@ object AiThemeController : AiThemeService {
             cardBackgroundFile = currentHomeCardFile(),
             cardStickerFiles = currentStickerFiles(),
             adaptive = AdaptiveThemeStore.exportPayload(repo),
+            dynamicWallpaperFile = currentDynamicWallpaperFile(),
+            dynamicHomeCardFile = currentDynamicHomeCardFile(),
         ).getOrThrow()
         val uri = FileProvider.getUriForFile(
             ksuApp,
@@ -393,6 +399,8 @@ object AiThemeController : AiThemeService {
 
     private fun buildThemePackageData(): ThemePackageData {
         val builtinIconIds = BuiltinAppIcons.all.map { it.id }.toSet()
+        val dynamicWallpaperFile = currentDynamicWallpaperFile()
+        val dynamicHomeCardFile = currentDynamicHomeCardFile()
         return ThemePackageData(
             themeMode = repo.themeMode,
             miuixMonet = repo.miuixMonet,
@@ -433,8 +441,40 @@ object AiThemeController : AiThemeService {
             customHomeTitle = repo.customHomeTitle.takeIf { it.isNotBlank() },
             customTexts = repo.customTexts.takeIf { it.isNotEmpty() },
             appearance = AppearanceOverlayStore.data(repo),
+            // The AI export mirrors the live appearance, so it carries the dynamic media too.
+            // Without this the imported package would silently clear the receiver's wallpaper.
+            dynamic = DynamicWallpaperPackage(
+                hasWallpaper = dynamicWallpaperFile != null,
+                hasHomeCard = dynamicHomeCardFile != null,
+                wallpaperTransform = if (dynamicWallpaperFile != null) {
+                    DynamicWallpaperGeometry(
+                        fit = repo.dynamicWallpaperFit,
+                        zoom = repo.dynamicWallpaperZoom,
+                        offsetX = repo.dynamicWallpaperOffsetX,
+                        offsetY = repo.dynamicWallpaperOffsetY,
+                    ).sanitized()
+                } else {
+                    null
+                },
+                homeCardTransform = if (dynamicHomeCardFile != null) {
+                    DynamicWallpaperGeometry(
+                        fit = repo.dynamicHomeCardFit,
+                        zoom = repo.dynamicHomeCardZoom,
+                        offsetX = repo.dynamicHomeCardOffsetX,
+                        offsetY = repo.dynamicHomeCardOffsetY,
+                    ).sanitized()
+                } else {
+                    null
+                },
+            ),
         )
     }
+
+    private fun currentDynamicWallpaperFile(): File? =
+        ImageStorage.dynamicWallpaperFile(ksuApp)
+
+    private fun currentDynamicHomeCardFile(): File? =
+        ImageStorage.dynamicHomeCardFile(ksuApp)
 
     private fun currentBackgroundFile(): File? = if (repo.useSystemWallpaper) {
         ImageStorage.systemWallpaperFile(ksuApp).takeIf { it.isFile }

@@ -874,6 +874,8 @@
     <string name="theme_opt_module_display">模块显示（排序与描述最大行数）</string>
     <string name="theme_opt_other">其他</string>
     <string name="theme_opt_bottom_bar_icons">自定义底栏图标</string>
+    <string name="theme_opt_dynamic_wallpaper">动态壁纸</string>
+    <string name="theme_opt_dynamic_home_card">动态卡片背景</string>
     <string name="theme_upload_to_store">上传到主题商店</string>
     <string name="settings_bottom_bar_icon_home">首页标签图标</string>
     <string name="settings_bottom_bar_icon_superuser">超级用户标签图标</string>
@@ -1628,6 +1630,8 @@
     <string name="theme_reset_confirm_message">卡片不透明度、背景模糊和遮罩将恢复默认，主题配色、动态颜色和自定义背景图片会保留。</string>
     <string name="theme_export_success">已导出主题包</string>
     <string name="theme_export_failed">导出主题包失败</string>
+    <string name="theme_export_dynamic_skipped">为控制在 128 MB 以内，已跳过动态壁纸</string>
+    <string name="theme_export_package_too_large">主题包超过 128 MB 上限</string>
     <string name="theme_import_success">已导入主题包</string>
     <string name="theme_import_failed">无效的主题包</string>
     <string name="theme_import_failed_restored">主题导入失败，已恢复应用前的外观</string>

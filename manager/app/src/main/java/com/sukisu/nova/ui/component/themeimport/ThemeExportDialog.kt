@@ -5,6 +5,7 @@ import androidx.compose.ui.res.stringResource
 import com.sukisu.nova.R
 import com.sukisu.nova.ui.screen.settings.ThemePackageOptions
 import com.sukisu.nova.ui.util.CustomTextGroup
+import com.sukisu.nova.ui.util.ThemePackageStorage
 
 @Composable
 fun ThemeExportDialog(
@@ -21,6 +22,8 @@ fun ThemeExportDialog(
     hasImageEffects: Boolean = false,
     immersiveHome: Boolean = false,
     hasBottomBarIcons: Boolean = false,
+    hasDynamicWallpaper: Boolean = false,
+    hasDynamicHomeCard: Boolean = false,
     onUpload: ((ThemePackageOptions) -> Unit)? = null,
 ) {
     ThemeOptionsDialog(
@@ -35,20 +38,25 @@ fun ThemeExportDialog(
         onDismissRequest = onDismissRequest,
         onConfirm = onConfirm,
         formatVersion = when {
+            hasDynamicWallpaper || hasDynamicHomeCard ->
+                ThemePackageStorage.DYNAMIC_VERSION
+
             immersiveHome || hasBottomBarIcons ->
-                com.sukisu.nova.ui.util.ThemePackageStorage.HOME_STATUS_VERSION
+                ThemePackageStorage.HOME_STATUS_VERSION
 
             hasCustomColors || hasImageEffects ->
-                com.sukisu.nova.ui.util.ThemePackageStorage.APPEARANCE_VERSION
+                ThemePackageStorage.APPEARANCE_VERSION
 
-            adaptive -> com.sukisu.nova.ui.util.ThemePackageStorage.ADAPTIVE_VERSION
-            else -> com.sukisu.nova.ui.util.ThemePackageStorage.BASE_VERSION
+            adaptive -> ThemePackageStorage.ADAPTIVE_VERSION
+            else -> ThemePackageStorage.BASE_VERSION
         },
         adaptive = adaptive,
         adaptiveNotice = R.string.theme_adaptive_export_notice,
         hasCustomColors = hasCustomColors,
         hasImageEffects = hasImageEffects,
         hasBottomBarIcons = hasBottomBarIcons,
+        hasDynamicWallpaper = hasDynamicWallpaper,
+        hasDynamicHomeCard = hasDynamicHomeCard,
         onUpload = onUpload,
     )
 }

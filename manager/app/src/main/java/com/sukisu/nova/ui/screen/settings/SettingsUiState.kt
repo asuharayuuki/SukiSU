@@ -157,6 +157,9 @@ data class SettingsUiState(
     val adaptiveDraftLightCaptured: Boolean = false,
     val adaptiveDraftDarkCaptured: Boolean = false,
     val adaptiveDraftComplete: Boolean = false,
+    /** A complete draft carries its own shared dynamic media snapshot. */
+    val adaptiveDraftDynamicWallpaper: Boolean = false,
+    val adaptiveDraftDynamicHomeCard: Boolean = false,
     
     val adaptiveDraftRevision: Int = 0,
 
@@ -190,6 +193,10 @@ data class ThemePackageOptions(
     val customColors: Boolean = true,
     val imageEffects: Boolean = true,
     val bottomBarIcons: Boolean = true,
+    /** The full-screen dynamic wallpaper (MP4/animated WebP). */
+    val dynamicWallpaper: Boolean = true,
+    /** The dynamic file behind the home status card. */
+    val dynamicHomeCard: Boolean = true,
 )
 
 val ThemePackageOptionsSaver = listSaver(
@@ -214,6 +221,8 @@ val ThemePackageOptionsSaver = listSaver(
             it.customColors,
             it.imageEffects,
             it.bottomBarIcons,
+            it.dynamicWallpaper,
+            it.dynamicHomeCard,
         )
     },
     restore = {
@@ -239,6 +248,8 @@ val ThemePackageOptionsSaver = listSaver(
             customColors = it.getOrElse(16) { true },
             imageEffects = it.getOrElse(17) { true },
             bottomBarIcons = it.getOrElse(18) { true },
+            dynamicWallpaper = it.getOrElse(19) { true },
+            dynamicHomeCard = it.getOrElse(20) { true },
         )
     },
 )

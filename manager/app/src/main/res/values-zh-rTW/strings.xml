@@ -854,6 +854,8 @@
     <string name="theme_reset_confirm_message">卡片不透明度、背景模糊與遮罩將恢復預設，主題配色、動態顏色與自訂背景圖片會保留。</string>
     <string name="theme_export_success">已匯出主題包</string>
     <string name="theme_export_failed">匯出主題包失敗</string>
+    <string name="theme_export_dynamic_skipped">為控制在 128 MB 以內，已略過動態桌布</string>
+    <string name="theme_export_package_too_large">主題包超過 128 MB 上限</string>
     <string name="theme_import_success">已匯入主題包</string>
     <string name="theme_import_failed">無效的主題包</string>
     <string name="theme_reset_done">已恢復預設外觀</string>
@@ -1235,6 +1237,8 @@
     <string name="theme_opt_module_display">模組顯示（排序與描述最大行數）</string>
     <string name="theme_opt_other">其他</string>
     <string name="theme_opt_bottom_bar_icons">自訂底欄圖示</string>
+    <string name="theme_opt_dynamic_wallpaper">動態桌布</string>
+    <string name="theme_opt_dynamic_home_card">動態卡片背景</string>
     <string name="theme_upload_to_store">上傳到主題商店</string>
     <string name="settings_bottom_bar_icon_home">首頁標籤圖示</string>
     <string name="settings_bottom_bar_icon_superuser">超級使用者標籤圖示</string>
