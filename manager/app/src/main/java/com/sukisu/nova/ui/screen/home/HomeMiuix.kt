@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -481,7 +482,10 @@ private fun ActiveStatusCard(
         )
     }
 
-    var dynamicCardFailed by remember(state.dynamicHomeCardPath) { mutableStateOf(false) }
+    var dynamicCardFailed by remember(
+        state.dynamicHomeCardPath,
+        state.dynamicHomeCardUpdatedAt,
+    ) { mutableStateOf(false) }
     val dynamicCardPath = state.dynamicHomeCardPath.takeIf { it.isNotEmpty() && !dynamicCardFailed }
     val hasCardImage = dynamicCardPath != null || cardImagePainter != null
     val cardShape = RoundedCornerShape(CardDefaults.CornerRadius)
@@ -504,15 +508,17 @@ private fun ActiveStatusCard(
             )
     ) {
         if (dynamicCardPath != null) {
-            DynamicWallpaperBackground(
-                path = dynamicCardPath,
-                muted = true,
-                transform = state.dynamicHomeCardTransform,
-                fps = state.dynamicPlaybackFps,
-                speed = state.dynamicPlaybackSpeed,
-                modifier = Modifier.matchParentSize(),
-                onError = { dynamicCardFailed = true },
-            )
+            key(dynamicCardPath, state.dynamicHomeCardUpdatedAt) {
+                DynamicWallpaperBackground(
+                    path = dynamicCardPath,
+                    muted = true,
+                    transform = state.dynamicHomeCardTransform,
+                    fps = state.dynamicPlaybackFps,
+                    speed = state.dynamicPlaybackSpeed,
+                    modifier = Modifier.matchParentSize(),
+                    onError = { dynamicCardFailed = true },
+                )
+            }
         }
         AppCard(
             modifier = Modifier

@@ -1518,8 +1518,10 @@
     <string name="dynamic_wallpaper_title">动态壁纸</string>
     <string name="dynamic_wallpaper_settings_summary">MP4 / WebP 动态壁纸，单个最大 308 MB</string>
     <string name="dynamic_wallpaper_limit">单个文件最大 308 MB，视频默认静音，可在预览页开启声音。</string>
+    <string name="dynamic_home_card_limit">单个文件最大 308 MB，卡片背景始终静音。</string>
     <string name="dynamic_wallpaper_pending">待应用</string>
     <string name="dynamic_wallpaper_pending_title">应用动态壁纸？</string>
+    <string name="dynamic_home_card_pending_title">应用卡片背景？</string>
     <string name="dynamic_wallpaper_empty_title">还没有动态壁纸</string>
     <string name="dynamic_wallpaper_empty_summary">选择 MP4 视频或动态 WebP，作为整个应用的背景播放。</string>
     <string name="dynamic_wallpaper_preview_failed_title">无法播放此壁纸</string>
@@ -1527,11 +1529,14 @@
     <string name="dynamic_wallpaper_retry">重试预览</string>
     <string name="dynamic_wallpaper_pick">选择 MP4 / WebP</string>
     <string name="dynamic_wallpaper_replace">替换动态壁纸</string>
+    <string name="dynamic_home_card_replace">替换卡片背景</string>
     <string name="dynamic_wallpaper_apply">应用</string>
     <string name="dynamic_wallpaper_discard">放弃</string>
     <string name="dynamic_wallpaper_remove">移除动态壁纸</string>
     <string name="dynamic_wallpaper_remove_title">移除动态壁纸？</string>
+    <string name="dynamic_home_card_remove_title">移除卡片背景？</string>
     <string name="dynamic_wallpaper_remove_message">将从应用中删除该视频或动态图片，静态背景不会受到影响。</string>
+    <string name="dynamic_home_card_remove_message">将从主页卡片移除该视频或动态图片，静态卡片图片不会受到影响。</string>
     <string name="dynamic_wallpaper_mute">视频静音</string>
     <string name="dynamic_wallpaper_mute_summary">播放背景视频时不输出声音</string>
     <string name="dynamic_wallpaper_format_mp4">MP4</string>
@@ -1540,6 +1545,7 @@
     <string name="dynamic_wallpaper_unsupported">仅支持 MP4 和 WebP 文件</string>
     <string name="dynamic_wallpaper_import_failed">无法导入该壁纸</string>
     <string name="dynamic_wallpaper_apply_failed">无法应用该壁纸</string>
+    <string name="dynamic_home_card_apply_failed">无法应用该卡片背景</string>
     <string name="settings_home_card_image">首页状态卡背景图</string>
     <string name="settings_home_card_image_default">使用卡片底色</string>
     <string name="settings_home_card_image_set">已选择图片</string>

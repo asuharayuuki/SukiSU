@@ -35,6 +35,7 @@ import com.sukisu.nova.data.repository.KEY_DYNAMIC_WALLPAPER_SPEED
 import com.sukisu.nova.data.repository.KEY_DYNAMIC_HOME_CARD_OFFSET_X
 import com.sukisu.nova.data.repository.KEY_DYNAMIC_HOME_CARD_OFFSET_Y
 import com.sukisu.nova.data.repository.KEY_DYNAMIC_HOME_CARD_PATH
+import com.sukisu.nova.data.repository.KEY_DYNAMIC_HOME_CARD_UPDATED_AT
 import com.sukisu.nova.data.repository.KEY_DYNAMIC_HOME_CARD_ZOOM
 import com.sukisu.nova.data.repository.KEY_HOME_CARD_IMAGE_PATH
 import com.sukisu.nova.data.repository.KEY_HOME_CARD_IMAGE_STYLE
@@ -87,8 +88,16 @@ class HomeViewModel(
         if (key == null || key == KEY_HOME_CARD_IMAGE_PATH) {
             updateContent { it.copy(homeCardImagePath = existingHomeCardImage()) }
         }
-        if (key == null || key == KEY_DYNAMIC_HOME_CARD_PATH) {
-            updateContent { it.copy(dynamicHomeCardPath = existingDynamicHomeCard()) }
+        if (
+            key == null || key == KEY_DYNAMIC_HOME_CARD_PATH ||
+            key == KEY_DYNAMIC_HOME_CARD_UPDATED_AT
+        ) {
+            updateContent {
+                it.copy(
+                    dynamicHomeCardPath = existingDynamicHomeCard(),
+                    dynamicHomeCardUpdatedAt = settingsRepo.dynamicHomeCardUpdatedAt,
+                )
+            }
         }
         if (key == null || key == KEY_DYNAMIC_HOME_CARD_FIT || key == KEY_DYNAMIC_HOME_CARD_ZOOM ||
             key == KEY_DYNAMIC_HOME_CARD_OFFSET_X || key == KEY_DYNAMIC_HOME_CARD_OFFSET_Y
@@ -400,6 +409,7 @@ class HomeViewModel(
             customHomeTitle = settingsRepo.customHomeTitle,
             homeCardImagePath = existingHomeCardImage(),
             dynamicHomeCardPath = existingDynamicHomeCard(),
+            dynamicHomeCardUpdatedAt = settingsRepo.dynamicHomeCardUpdatedAt,
             dynamicHomeCardTransform = dynamicHomeCardTransform(),
             dynamicPlaybackFps = settingsRepo.dynamicWallpaperFps,
             dynamicPlaybackSpeed = settingsRepo.dynamicWallpaperSpeed,

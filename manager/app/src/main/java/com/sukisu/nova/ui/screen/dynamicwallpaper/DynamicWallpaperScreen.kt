@@ -33,6 +33,8 @@ import com.sukisu.nova.ui.component.background.DynamicWallpaperTarget
 import com.sukisu.nova.ui.component.background.DynamicWallpaperTransform
 import com.sukisu.nova.ui.navigation3.LocalNavigator
 import com.sukisu.nova.ui.theme.LocalBackgroundImagePath
+import com.sukisu.nova.ui.util.HomeLayout
+import com.sukisu.nova.ui.util.HomeStatusStyle
 import com.sukisu.nova.ui.util.ImageStorage
 import com.sukisu.nova.ui.viewmodel.SettingsViewModel
 import java.io.File
@@ -56,6 +58,9 @@ data class DynamicWallpaperPreviewUiState(
     val fps: Int = 0,
     val speed: Float = 1f,
     val isCard: Boolean = false,
+    val cardLayout: HomeLayout = HomeLayout.CLASSIC,
+    val cardWidthFraction: Float = HomeStatusStyle.WIDTH_DEFAULT,
+    val cardHeightScale: Float = HomeStatusStyle.SCALE_DEFAULT,
 )
 
 @Immutable
@@ -69,6 +74,8 @@ data class DynamicWallpaperPreviewActions(
     val onConfirmRemove: () -> Unit = {},
     val onSetMuted: (Boolean) -> Unit = {},
     val onRetryRenderer: () -> Unit = {},
+    val onRendererError: (String) -> Unit = {},
+    val onTransformChange: (DynamicWallpaperTransform) -> Unit = {},
     val onSelectFit: (DynamicWallpaperFit) -> Unit = {},
     val onSetFps: (Int) -> Unit = {},
     val onSetSpeed: (Float) -> Unit = {},
@@ -234,7 +241,11 @@ fun DynamicWallpaperScreen(card: Boolean = false) {
                     } else {
                         Toast.makeText(
                             context,
-                            R.string.dynamic_wallpaper_apply_failed,
+                            if (card) {
+                                R.string.dynamic_home_card_apply_failed
+                            } else {
+                                R.string.dynamic_wallpaper_apply_failed
+                            },
                             Toast.LENGTH_LONG,
                         ).show()
                     }
@@ -261,6 +272,12 @@ fun DynamicWallpaperScreen(card: Boolean = false) {
             rendererFailed = false
             rendererError = ""
         },
+        onRendererError = { reason ->
+            android.util.Log.w("DynamicWallpaper", "card preview failed: $reason")
+            rendererError = reason
+            rendererFailed = true
+        },
+        onTransformChange = { transform = it },
         onSelectFit = { fit ->
             transform = transform.copy(
                 fit = fit,
@@ -289,13 +306,18 @@ fun DynamicWallpaperScreen(card: Boolean = false) {
         fps = settings.dynamicWallpaperFps,
         speed = settings.dynamicWallpaperSpeed,
         isCard = card,
+        cardLayout = settings.homeLayout,
+        cardWidthFraction = settings.homeStatusWidthFraction,
+        cardHeightScale = settings.homeStatusScale,
     )
 
     val adjustActive = state.transform.fit == DynamicWallpaperFit.CUSTOM &&
         state.previewPath != null && !state.busy
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (state.previewPath != null && !state.rendererFailed) {
+        // The card editor renders its own card-shaped stage inside the control layout; only the
+        // app-wide wallpaper is previewed full screen.
+        if (!state.isCard && state.previewPath != null && !state.rendererFailed) {
             key(state.previewPath, state.previewUpdatedAt) {
                 DynamicWallpaperBackground(
                     path = state.previewPath,
@@ -314,7 +336,7 @@ fun DynamicWallpaperScreen(card: Boolean = false) {
                 )
             }
         }
-        if (adjustActive) {
+        if (!state.isCard && adjustActive) {
             // Sits above the live media but below the controls, so empty areas can zoom and pan
             // while the top bar and the panel keep receiving their own gestures.
             Box(

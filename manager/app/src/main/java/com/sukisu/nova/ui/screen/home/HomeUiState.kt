@@ -96,6 +96,7 @@ data class HomeUiState(
     val customHomeTitle: String = "",
     val homeCardImagePath: String = "",
     val dynamicHomeCardPath: String = "",
+    val dynamicHomeCardUpdatedAt: Long = 0L,
     val dynamicHomeCardTransform: DynamicWallpaperTransform = DynamicWallpaperTransform.Default,
     val dynamicPlaybackFps: Int = 0,
     val dynamicPlaybackSpeed: Float = 1f,
