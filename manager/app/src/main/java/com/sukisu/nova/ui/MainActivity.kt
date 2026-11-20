@@ -520,6 +520,9 @@ class MainActivity : ComponentActivity() {
                         Box(modifier = Modifier.fillMaxSize()) {
                             // The static image and the dynamic WebView share one captured layer so
                             // the bar blur and its progressive band can sample either wallpaper.
+                            // The scrim has to live inside that layer too: the bars sample it as the
+                            // pixels behind them, so leaving it out makes the blurred edge far
+                            // brighter than the darkened background it sits on.
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -596,20 +599,20 @@ class MainActivity : ComponentActivity() {
                                         )
                                     }
                                 }
-                            }
-                            val scrimPercent = uiState.customBackgroundScrimPercent
-                            if (hasCustomBackground && scrimPercent != 0) {
-                                val scrimColor = if (scrimPercent < 0) {
-                                    Color.Black.copy(alpha = -scrimPercent / 100f)
-                                } else {
-                                    Color.White.copy(alpha = scrimPercent / 100f)
+                                val scrimPercent = uiState.customBackgroundScrimPercent
+                                if (hasCustomBackground && scrimPercent != 0) {
+                                    val scrimColor = if (scrimPercent < 0) {
+                                        Color.Black.copy(alpha = -scrimPercent / 100f)
+                                    } else {
+                                        Color.White.copy(alpha = scrimPercent / 100f)
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .zIndex(1f)
+                                            .background(scrimColor)
+                                    )
                                 }
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .zIndex(1f)
-                                        .background(scrimColor)
-                                )
                             }
                         }
 

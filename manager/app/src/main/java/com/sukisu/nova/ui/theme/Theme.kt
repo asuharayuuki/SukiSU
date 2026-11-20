@@ -171,6 +171,10 @@ val LocalDynamicWallpaperActive = staticCompositionLocalOf { false }
  * unpainted parts of that layer are fully transparent. Miuix bar blurs sample that layer, and
  * transparent pixels bleed black into the result, so bars combine this backdrop underneath their
  * own page backdrop to blur what is actually on screen. Null when no capture is available.
+ *
+ * Everything drawn over the wallpaper (the scrim, appearance effects) has to stay inside the
+ * captured layer: bars use these pixels as "what is behind me", so an overlay left outside the
+ * capture makes the blurred bar brighter than the background it meets.
  */
 val LocalAppBackgroundBackdrop = staticCompositionLocalOf<LayerBackdrop?> { null }
 
