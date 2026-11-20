@@ -79,32 +79,47 @@ fun DynamicWallpaperScreenMiuix(
         null -> ""
     }
     val hasPreview = state.previewPath != null
+    val mediaVisible = hasPreview && !state.rendererFailed
+    val topBarContentColor = if (mediaVisible) Color.White else colorScheme.onSurface
+    val topBarSecondaryColor = if (mediaVisible) {
+        Color.White.copy(alpha = 0.76f)
+    } else {
+        colorScheme.onSurfaceVariantSummary
+    }
     val canPick = !state.busy
     val maxPanelHeight = with(LocalDensity.current) {
         maxOf(180.dp, LocalWindowInfo.current.containerSize.height.toDp() * 0.55f)
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(if (mediaVisible) Color.Transparent else colorScheme.surface)
+    ) {
         // Keeps the floating top bar readable over both bright and dark media.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.52f),
-                        0.18f to Color.Black.copy(alpha = 0.12f),
-                        0.62f to Color.Transparent,
-                        0.82f to Color.Black.copy(alpha = 0.24f),
-                        1f to Color.Black.copy(alpha = 0.62f),
+        if (mediaVisible) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Black.copy(alpha = 0.52f),
+                            0.18f to Color.Black.copy(alpha = 0.12f),
+                            0.62f to Color.Transparent,
+                            0.82f to Color.Black.copy(alpha = 0.24f),
+                            1f to Color.Black.copy(alpha = 0.62f),
+                        )
                     )
-                )
-        )
+            )
+        }
 
-        if (!hasPreview || state.rendererFailed) {
+        if (!mediaVisible) {
             EmptyPreview(
                 rendererFailed = state.rendererFailed,
                 error = state.rendererError,
                 onRetry = actions.onRetryRenderer,
+                contentColor = topBarContentColor,
+                secondaryColor = topBarSecondaryColor,
                 modifier = Modifier.align(Alignment.Center),
             )
         }
@@ -128,12 +143,12 @@ fun DynamicWallpaperScreenMiuix(
                         },
                         imageVector = MiuixIcons.Back,
                         contentDescription = stringResource(R.string.log_viewer_back),
-                        tint = Color.White,
+                        tint = topBarContentColor,
                     )
                 }
                 Text(
                     text = stringResource(R.string.dynamic_wallpaper_title),
-                    color = Color.White,
+                    color = topBarContentColor,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(start = 2.dp),
@@ -142,11 +157,17 @@ fun DynamicWallpaperScreenMiuix(
                 if (state.hasStaged) {
                     Text(
                         text = stringResource(R.string.dynamic_wallpaper_pending),
-                        color = Color.White,
+                        color = topBarContentColor,
                         fontSize = 13.sp,
                         modifier = Modifier
                             .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
-                            .background(Color.White.copy(alpha = 0.18f))
+                            .background(
+                                if (mediaVisible) {
+                                    Color.White.copy(alpha = 0.18f)
+                                } else {
+                                    colorScheme.surfaceContainerHigh
+                                }
+                            )
                             .padding(horizontal = 10.dp, vertical = 4.dp),
                     )
                     Spacer(Modifier.width(12.dp))
@@ -439,6 +460,8 @@ private fun EmptyPreview(
     rendererFailed: Boolean,
     error: String,
     onRetry: () -> Unit,
+    contentColor: Color,
+    secondaryColor: Color,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -449,7 +472,7 @@ private fun EmptyPreview(
         Icon(
             imageVector = Icons.Rounded.PlayCircle,
             contentDescription = null,
-            tint = Color.White.copy(alpha = 0.9f),
+            tint = contentColor.copy(alpha = 0.9f),
             modifier = Modifier.size(56.dp),
         )
         Text(
@@ -460,7 +483,7 @@ private fun EmptyPreview(
                     R.string.dynamic_wallpaper_empty_title
                 }
             ),
-            color = Color.White,
+            color = contentColor,
             fontSize = 18.sp,
             fontWeight = FontWeight.Medium,
             textAlign = TextAlign.Center,
@@ -473,14 +496,14 @@ private fun EmptyPreview(
                     R.string.dynamic_wallpaper_empty_summary
                 }
             ),
-            color = Color.White.copy(alpha = 0.76f),
+            color = secondaryColor,
             fontSize = 14.sp,
             textAlign = TextAlign.Center,
         )
         if (rendererFailed && error.isNotBlank()) {
             Text(
                 text = error,
-                color = Color.White.copy(alpha = 0.62f),
+                color = contentColor.copy(alpha = 0.62f),
                 fontSize = 11.sp,
                 textAlign = TextAlign.Center,
                 maxLines = 3,
@@ -491,8 +514,8 @@ private fun EmptyPreview(
                 text = stringResource(R.string.dynamic_wallpaper_retry),
                 onClick = onRetry,
                 colors = ButtonDefaults.textButtonColors(
-                    color = Color.White.copy(alpha = 0.16f),
-                    textColor = Color.White,
+                    color = contentColor.copy(alpha = 0.16f),
+                    textColor = contentColor,
                 ),
             )
         }

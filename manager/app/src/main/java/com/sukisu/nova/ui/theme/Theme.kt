@@ -161,6 +161,9 @@ val LocalModuleDescriptionMaxLines = staticCompositionLocalOf { 4 }
 
 val LocalBackgroundImagePath = staticCompositionLocalOf { "" }
 
+/** True while the shared window background is a dynamic wallpaper rather than a still image. */
+val LocalDynamicWallpaperActive = staticCompositionLocalOf { false }
+
 /**
  * Captures the app background image (and its scrim) exactly as drawn behind the navigation host.
  *

@@ -6,6 +6,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -79,6 +80,7 @@ import com.sukisu.nova.ui.component.statustag.StatusTag
 import com.sukisu.nova.ai.api.AiFeatureBridge
 import com.sukisu.nova.ui.theme.AiAssistantMaterialTheme
 import com.sukisu.nova.ui.theme.LocalBackgroundImagePath
+import com.sukisu.nova.ui.theme.LocalDynamicWallpaperActive
 import com.sukisu.nova.ui.theme.LocalEnableBlur
 import com.sukisu.nova.ui.theme.backgroundAwareCardColors
 import com.sukisu.nova.ui.theme.backgroundAwareColor
@@ -482,10 +484,24 @@ private fun ActiveStatusCard(
     var dynamicCardFailed by remember(state.dynamicHomeCardPath) { mutableStateOf(false) }
     val dynamicCardPath = state.dynamicHomeCardPath.takeIf { it.isNotEmpty() && !dynamicCardFailed }
     val hasCardImage = dynamicCardPath != null || cardImagePainter != null
+    val cardShape = RoundedCornerShape(CardDefaults.CornerRadius)
+    val showingDynamicMedia = dynamicCardPath != null || LocalDynamicWallpaperActive.current
+    val dynamicBorderColor = if (isDark) {
+        Color.White.copy(alpha = 0.28f)
+    } else {
+        colorScheme.onSurface.copy(alpha = 0.12f)
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(CardDefaults.CornerRadius))
+            .clip(cardShape)
+            .then(
+                if (showingDynamicMedia) {
+                    Modifier.border(1.dp, dynamicBorderColor, cardShape)
+                } else {
+                    Modifier
+                }
+            )
     ) {
         if (dynamicCardPath != null) {
             DynamicWallpaperBackground(

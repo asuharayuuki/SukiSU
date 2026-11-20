@@ -6,6 +6,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -100,6 +101,7 @@ import com.sukisu.nova.ui.component.material.expressiveTopAppBarColors
 import com.sukisu.nova.ui.component.rebootlistpopup.RebootListPopup
 import com.sukisu.nova.ui.component.statustag.StatusTag
 import com.sukisu.nova.ui.theme.LocalBackgroundImagePath
+import com.sukisu.nova.ui.theme.LocalDynamicWallpaperActive
 import com.sukisu.nova.ui.theme.backgroundAwareColor
 import com.sukisu.nova.ui.util.CustomTextKey
 import com.sukisu.nova.ui.util.HomeLayout
@@ -414,11 +416,20 @@ private fun ActiveStatusCard(
     var dynamicCardFailed by remember(state.dynamicHomeCardPath) { mutableStateOf(false) }
     val dynamicCardPath = state.dynamicHomeCardPath.takeIf { it.isNotEmpty() && !dynamicCardFailed }
     val hasCardImage = dynamicCardPath != null || cardImagePainter != null
+    val showingDynamicMedia = dynamicCardPath != null || LocalDynamicWallpaperActive.current
+    val dynamicBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
     val hideCardDecoration = hasCardImage && state.hideHomeCardDecoration
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(HeroShape)
+            .then(
+                if (showingDynamicMedia) {
+                    Modifier.border(1.dp, dynamicBorderColor, HeroShape)
+                } else {
+                    Modifier
+                }
+            )
     ) {
         if (dynamicCardPath != null) {
             DynamicWallpaperBackground(

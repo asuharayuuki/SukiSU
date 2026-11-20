@@ -26,6 +26,7 @@ import com.sukisu.nova.ui.theme.LocalAppBackgroundBackdrop
 import com.sukisu.nova.ui.theme.LocalAppSettings
 import com.sukisu.nova.ui.theme.MaterialExpressivePalette
 import com.sukisu.nova.ui.theme.LocalBackgroundImagePath
+import com.sukisu.nova.ui.theme.LocalDynamicWallpaperActive
 import com.sukisu.nova.ui.theme.LocalCardBackgroundAlpha
 import com.sukisu.nova.ui.theme.appearanceImageEffects
 import java.io.File
@@ -304,6 +305,7 @@ class MainActivity : ComponentActivity() {
                 LocalEnableNavigationBadge provides uiState.enableNavigationBadge,
                 LocalModuleDescriptionMaxLines provides uiState.moduleDescriptionMaxLines,
                 LocalBackgroundImagePath provides effectiveBackgroundPath,
+                LocalDynamicWallpaperActive provides hasDynamicWallpaper,
                 LocalAppBackgroundBackdrop provides appBackgroundBackdrop.takeIf { captureAppBackground },
                 LocalCardBackgroundAlpha provides (uiState.cardBackgroundAlphaPercent / 100f),
                 LocalUiMode provides uiMode,
