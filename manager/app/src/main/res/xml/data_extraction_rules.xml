@@ -6,6 +6,15 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="theme_device_access.xml"/>
+        <!-- Dynamic wallpapers can be up to 308 MB; never push them through backup. -->
+        <exclude domain="file" path="backgrounds/dynamic_wallpaper.mp4"/>
+        <exclude domain="file" path="backgrounds/dynamic_wallpaper.webp"/>
+        <exclude domain="file" path="backgrounds/dynamic_wallpaper.mp4.tmp"/>
+        <exclude domain="file" path="backgrounds/dynamic_wallpaper.webp.tmp"/>
+        <exclude domain="file" path="backgrounds/dynamic_home_card.mp4"/>
+        <exclude domain="file" path="backgrounds/dynamic_home_card.webp"/>
+        <exclude domain="file" path="backgrounds/dynamic_home_card.mp4.tmp"/>
+        <exclude domain="file" path="backgrounds/dynamic_home_card.webp.tmp"/>
         <!-- TODO: Use <include> and <exclude> to control what is backed up.
         <include .../>
         <exclude .../>
@@ -19,5 +28,13 @@
     -->
     <device-transfer>
         <exclude domain="sharedpref" path="theme_device_access.xml"/>
+        <exclude domain="file" path="backgrounds/dynamic_wallpaper.mp4"/>
+        <exclude domain="file" path="backgrounds/dynamic_wallpaper.webp"/>
+        <exclude domain="file" path="backgrounds/dynamic_wallpaper.mp4.tmp"/>
+        <exclude domain="file" path="backgrounds/dynamic_wallpaper.webp.tmp"/>
+        <exclude domain="file" path="backgrounds/dynamic_home_card.mp4"/>
+        <exclude domain="file" path="backgrounds/dynamic_home_card.webp"/>
+        <exclude domain="file" path="backgrounds/dynamic_home_card.mp4.tmp"/>
+        <exclude domain="file" path="backgrounds/dynamic_home_card.webp.tmp"/>
     </device-transfer>
 </data-extraction-rules>

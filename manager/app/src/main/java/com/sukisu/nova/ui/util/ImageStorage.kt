@@ -1,3 +1,5 @@
+@file:Suppress("UNEXHAUSTIVE_WHEN_BASED_ON_JAVA_ANNOTATIONS")
+
 package com.sukisu.nova.ui.util
 
 import android.app.ActivityManager
@@ -6,6 +8,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Process
+import android.provider.OpenableColumns
 import android.system.Os
 import android.util.Base64
 import com.materialkolor.quantize.QuantizerCelebi
@@ -46,15 +49,54 @@ object ImageStorage {
     private const val SYSTEM_WALLPAPER_SIGNATURE_FILE_NAME = "system_wallpaper.sig"
     private const val MAX_SYSTEM_WALLPAPER_PIXELS = 150_000_000L
     private const val MAX_WALLPAPER_VALIDATION_DIMENSION = 1024
+    private const val DYNAMIC_WALLPAPER_PREFIX = "dynamic_wallpaper"
+    private const val DYNAMIC_CARD_PREFIX = "dynamic_home_card"
+    private const val DYNAMIC_WALLPAPER_STAGE_DIR_NAME = "dynamic_wallpaper_preview"
+    private const val DYNAMIC_WALLPAPER_COPY_BUFFER = 256 * 1024
+    private const val DYNAMIC_WALLPAPER_SNIFF_BYTES = 64
+
+    /**
+     * One dynamic wallpaper may not exceed 308 MiB. The file is streamed in and out of app
+     * storage, so the limit bounds the disk footprint rather than RAM use.
+     */
+    const val DYNAMIC_WALLPAPER_MAX_BYTES = 308L * 1024L * 1024L
 
     private val systemWallpaperMutex = Mutex()
 
-    
+
     data class SystemWallpaperResult(
         val path: String?,
-        
+
         val changed: Boolean,
     )
+
+    /** The two media formats accepted by the WebGL dynamic wallpaper renderer. */
+    enum class DynamicWallpaperKind(val extension: String, val mimeType: String) {
+        MP4("mp4", "video/mp4"),
+        WEBP("webp", "image/webp");
+
+        companion object {
+            fun fromFileName(name: String?): DynamicWallpaperKind? =
+                when (name?.substringAfterLast('.', "")?.lowercase()) {
+                    MP4.extension -> MP4
+                    WEBP.extension -> WEBP
+                    else -> null
+                }
+        }
+    }
+
+    sealed interface DynamicWallpaperResult {
+        data class Ready(
+            val path: String,
+            val kind: DynamicWallpaperKind,
+            val sizeBytes: Long,
+            val displayName: String,
+        ) : DynamicWallpaperResult
+
+        data object TooLarge : DynamicWallpaperResult
+        data object UnsupportedFormat : DynamicWallpaperResult
+        data object Failed : DynamicWallpaperResult
+    }
 
     const val CARD_ALPHA_MIN = 10
     const val CARD_ALPHA_MAX = 91
@@ -90,7 +132,301 @@ object ImageStorage {
         }
     }
 
-    
+    /** Resolves the applied dynamic wallpaper, if its file is still present. */
+    fun dynamicWallpaperFile(context: Context): File? =
+        newestDynamicFile(context, DYNAMIC_WALLPAPER_PREFIX)
+
+    /** Resolves the applied dynamic home-card background, if its file is still present. */
+    fun dynamicHomeCardFile(context: Context): File? =
+        newestDynamicFile(context, DYNAMIC_CARD_PREFIX)
+
+    private fun newestDynamicFile(context: Context, prefix: String): File? =
+        backgroundsDir(context)
+            .listFiles { file ->
+                file.isFile &&
+                    file.name.startsWith("$prefix.") &&
+                    DynamicWallpaperKind.fromFileName(file.name) != null
+            }
+            ?.maxByOrNull { it.lastModified() }
+
+    fun dynamicWallpaperKind(path: String): DynamicWallpaperKind? =
+        DynamicWallpaperKind.fromFileName(File(path).name)
+
+    /**
+     * Maps an app-private wallpaper file to the relative URL served by the dynamic wallpaper
+     * renderer. Only the two directories it exposes are accepted.
+     */
+    fun dynamicWallpaperAssetPath(context: Context, path: String): String? {
+        if (path.isBlank()) return null
+        val file = File(path)
+        val backgrounds = File(context.filesDir, DIR_NAME)
+        val staged = File(context.cacheDir, DYNAMIC_WALLPAPER_STAGE_DIR_NAME)
+        return when (file.parentFile) {
+            backgrounds -> "dynamic/${file.name}"
+            staged -> "dynamic-preview/${file.name}"
+            else -> null
+        }
+    }
+
+    /**
+     * Copies a picked MP4/WebP into the preview cache after validating its size and container.
+     * The file is only promoted into app storage by [commitStagedDynamicWallpaper], so backing
+     * out of the preview leaves the current wallpaper untouched.
+     */
+    suspend fun stageDynamicWallpaper(context: Context, uri: Uri): DynamicWallpaperResult =
+        withContext(Dispatchers.IO) {
+            val (displayName, declaredSize) = dynamicWallpaperMetadata(context, uri)
+            if (declaredSize != null && declaredSize > DYNAMIC_WALLPAPER_MAX_BYTES) {
+                return@withContext DynamicWallpaperResult.TooLarge
+            }
+            val dir = dynamicWallpaperStageDir(context)
+            // A new selection replaces the previous preview; leaving it around would let the
+            // cache grow past the one-wallpaper budget.
+            dir.listFiles()?.forEach { it.delete() }
+            val temp = runCatching { File.createTempFile("stage_", ".tmp", dir) }.getOrNull()
+                ?: return@withContext DynamicWallpaperResult.Failed
+            val outcome = runCatchingCancellable {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    copyDynamicWallpaper(input, temp)
+                } ?: CopyOutcome.Failed
+            }.getOrDefault(CopyOutcome.Failed)
+            if (outcome !is CopyOutcome.Valid) {
+                temp.delete()
+                return@withContext when (outcome) {
+                    CopyOutcome.TooLarge -> DynamicWallpaperResult.TooLarge
+                    CopyOutcome.Unsupported -> DynamicWallpaperResult.UnsupportedFormat
+                    else -> DynamicWallpaperResult.Failed
+                }
+            }
+            val target = File(dir, "preview_${System.currentTimeMillis()}.${outcome.kind.extension}")
+            if (!temp.renameTo(target)) {
+                val copied = runCatchingCancellable {
+                    temp.inputStream().use { input ->
+                        target.outputStream().use { output ->
+                            input.copyTo(output, DYNAMIC_WALLPAPER_COPY_BUFFER)
+                        }
+                    }
+                    target.length() > 0L
+                }.getOrDefault(false)
+                temp.delete()
+                if (!copied) {
+                    target.delete()
+                    return@withContext DynamicWallpaperResult.Failed
+                }
+            }
+            DynamicWallpaperResult.Ready(
+                path = target.absolutePath,
+                kind = outcome.kind,
+                sizeBytes = target.length(),
+                displayName = displayName ?: target.name,
+            )
+        }
+
+    /**
+     * Promotes a validated preview into the backgrounds directory. The previous file is removed
+     * only after the new copy is complete, so an interrupted commit cannot destroy both.
+     */
+    suspend fun commitStagedDynamicWallpaper(
+        context: Context,
+        stagedPath: String,
+        targetPrefix: String = DYNAMIC_WALLPAPER_PREFIX,
+    ): DynamicWallpaperResult = withContext(Dispatchers.IO) {
+        val staged = File(stagedPath)
+        val kind = DynamicWallpaperKind.fromFileName(staged.name)
+            ?: return@withContext DynamicWallpaperResult.UnsupportedFormat
+        if (!staged.isFile || staged.length() == 0L) {
+            return@withContext DynamicWallpaperResult.Failed
+        }
+        if (staged.length() > DYNAMIC_WALLPAPER_MAX_BYTES) {
+            return@withContext DynamicWallpaperResult.TooLarge
+        }
+        val dir = backgroundsDir(context)
+        val target = File(dir, "$targetPrefix.${kind.extension}")
+        val temp = File(dir, "${target.name}.tmp")
+        val copied = runCatchingCancellable {
+            staged.inputStream().use { input ->
+                temp.outputStream().use { output ->
+                    input.copyTo(output, DYNAMIC_WALLPAPER_COPY_BUFFER)
+                }
+            }
+            temp.length() in 1..DYNAMIC_WALLPAPER_MAX_BYTES
+        }.getOrDefault(false)
+        if (!copied) {
+            temp.delete()
+            return@withContext DynamicWallpaperResult.Failed
+        }
+        // Drop the previous format now. The same-name target is replaced atomically by the
+        // rename below, so a renderer reading the old file never observes a missing path.
+        dir.listFiles { file ->
+            file.name.startsWith("$targetPrefix.") &&
+                file != temp &&
+                file != target
+        }?.forEach { it.delete() }
+        if (!temp.renameTo(target)) {
+            val moved = runCatchingCancellable {
+                if (target.exists()) target.delete()
+                temp.inputStream().use { input ->
+                    target.outputStream().use { output ->
+                        input.copyTo(output, DYNAMIC_WALLPAPER_COPY_BUFFER)
+                    }
+                }
+                target.length() > 0L
+            }.getOrDefault(false)
+            temp.delete()
+            if (!moved) {
+                target.delete()
+                return@withContext DynamicWallpaperResult.Failed
+            }
+        }
+        DynamicWallpaperResult.Ready(
+            path = target.absolutePath,
+            kind = kind,
+            sizeBytes = target.length(),
+            displayName = target.name,
+        )
+    }
+
+    suspend fun commitStagedDynamicHomeCard(
+        context: Context,
+        stagedPath: String,
+    ): DynamicWallpaperResult =
+        commitStagedDynamicWallpaper(context, stagedPath, DYNAMIC_CARD_PREFIX)
+
+    suspend fun clearDynamicWallpaper(context: Context) = withContext(Dispatchers.IO) {
+        backgroundsDir(context)
+            .listFiles { file -> file.name.startsWith("$DYNAMIC_WALLPAPER_PREFIX.") }
+            ?.forEach { it.delete() }
+        dynamicWallpaperStageDir(context).listFiles()?.forEach { it.delete() }
+    }
+
+    suspend fun clearDynamicHomeCard(context: Context) = withContext(Dispatchers.IO) {
+        backgroundsDir(context)
+            .listFiles { file -> file.name.startsWith("$DYNAMIC_CARD_PREFIX.") }
+            ?.forEach { it.delete() }
+    }
+
+    fun discardStagedDynamicWallpaper(path: String?) {
+        if (path.isNullOrBlank()) return
+        runCatching {
+            val file = File(path)
+            if (file.isFile && file.name.startsWith("preview_")) file.delete()
+        }
+    }
+
+    private inline fun <T> runCatchingCancellable(block: () -> T): Result<T> = try {
+        Result.success(block())
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (throwable: Throwable) {
+        Result.failure(throwable)
+    }
+
+    private sealed interface CopyOutcome {
+        data class Valid(val kind: DynamicWallpaperKind) : CopyOutcome
+        data object TooLarge : CopyOutcome
+        data object Unsupported : CopyOutcome
+        data object Failed : CopyOutcome
+    }
+
+    private fun copyDynamicWallpaper(input: java.io.InputStream, output: File): CopyOutcome {
+        val header = ByteArray(DYNAMIC_WALLPAPER_SNIFF_BYTES)
+        var headerLength = 0
+        var total = 0L
+        try {
+            output.outputStream().use { out ->
+                input.use { raw ->
+                    val buffer = ByteArray(DYNAMIC_WALLPAPER_COPY_BUFFER)
+                    while (true) {
+                        val read = raw.read(buffer)
+                        if (read < 0) break
+                        if (read == 0) continue
+                        total += read
+                        if (total > DYNAMIC_WALLPAPER_MAX_BYTES) {
+                            return CopyOutcome.TooLarge
+                        }
+                        if (headerLength < header.size) {
+                            val take = minOf(header.size - headerLength, read)
+                            System.arraycopy(buffer, 0, header, headerLength, take)
+                            headerLength += take
+                        }
+                        out.write(buffer, 0, read)
+                    }
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return CopyOutcome.Failed
+        }
+        if (total <= 0L) return CopyOutcome.Failed
+        val kind = sniffDynamicWallpaperKind(header, headerLength)
+            ?: return CopyOutcome.Unsupported
+        return CopyOutcome.Valid(kind)
+    }
+
+    /**
+     * The picker MIME type is advisory only, so the container is identified from its magic
+     * bytes: RIFF/WEBP and ISO-BMFF ftyp. This also keeps an HTML or APK renamed to .mp4 out
+     * of the WebView's same-origin asset space.
+     */
+    private fun sniffDynamicWallpaperKind(header: ByteArray, length: Int): DynamicWallpaperKind? {
+        fun matches(offset: Int, text: String): Boolean {
+            if (offset < 0 || offset + text.length > length) return false
+            for (index in text.indices) {
+                if (header[offset + index] != text[index].code.toByte()) return false
+            }
+            return true
+        }
+
+        if (matches(0, "RIFF") && matches(8, "WEBP")) return DynamicWallpaperKind.WEBP
+        val lastOffset = (length - 4).coerceAtLeast(0)
+        for (offset in 0..lastOffset) {
+            if (matches(offset, "ftyp")) return DynamicWallpaperKind.MP4
+        }
+        return null
+    }
+
+    private fun dynamicWallpaperMetadata(context: Context, uri: Uri): Pair<String?, Long?> {
+        var name: String? = null
+        var size: Long? = null
+        runCatching {
+            context.contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex >= 0 && !cursor.isNull(nameIndex)) {
+                        name = cursor.getString(nameIndex)
+                    }
+                    val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) {
+                        size = cursor.getLong(sizeIndex)
+                    }
+                }
+            }
+        }
+        return name to size
+    }
+
+    /** Directory served to the renderer as `/dynamic/`; only app-written wallpaper files live here. */
+    fun dynamicWallpaperBackgroundsDir(context: Context): File = backgroundsDir(context)
+
+    /** Cache directory served to the preview renderer as `/dynamic-preview/`. */
+    fun dynamicWallpaperPreviewDir(context: Context): File = dynamicWallpaperStageDir(context)
+
+    private fun dynamicWallpaperStageDir(context: Context): File {
+        val dir = File(context.cacheDir, DYNAMIC_WALLPAPER_STAGE_DIR_NAME)
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return dir
+    }
+
+
     fun systemWallpaperFile(context: Context): File =
         File(backgroundsDir(context), SYSTEM_WALLPAPER_FILE_NAME)
 

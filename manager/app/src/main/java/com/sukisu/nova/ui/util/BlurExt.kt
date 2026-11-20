@@ -142,17 +142,24 @@ fun BlurredBar(
     val blurBackdrop = rememberBackdropWithAppBackground(backdrop)
     val tintAlpha = if (hasCustomBackground) cardAlpha else OpaqueBarTintAlpha
 
-    val blurModifier = if (progressiveBlur) {
-        // Always active: over a custom background the wallpaper edge should be frosted even before
-        // the page is scrolled, and without one the flat surface keeps the band invisible at rest.
-        rememberProgressiveBarBlurModifier(
-            backdrop = backdrop,
-            gradient = progressiveGradient,
-            tint = surfaceColor,
-            tintAlpha = tintAlpha,
-        )
-    } else if (effectiveBlurActive && blurBackdrop != null) {
-        Modifier.textureBlur(
+    val blurModifier = when {
+        progressiveBlur && blurBackdrop != null -> {
+            // Always active: over a custom background the wallpaper edge should be frosted even
+            // before the page is scrolled, and without one the flat surface keeps the band
+            // invisible at rest.
+            rememberProgressiveBarBlurModifier(
+                backdrop = backdrop,
+                gradient = progressiveGradient,
+                tint = surfaceColor,
+                tintAlpha = tintAlpha,
+            )
+        }
+        progressiveBlur -> {
+            // No sampleable wallpaper/page layer (for example a dynamic wallpaper whose frame
+            // could not be captured). Keep the bar readable instead of leaving it transparent.
+            Modifier.background(surfaceColor.copy(alpha = tintAlpha))
+        }
+        effectiveBlurActive && blurBackdrop != null -> Modifier.textureBlur(
             backdrop = blurBackdrop,
             shape = RectangleShape,
             blurRadius = BarBlurRadius,
@@ -162,10 +169,8 @@ fun BlurredBar(
                 ),
             ),
         )
-    } else if (effectiveBlurActive && hasCustomBackground) {
-        Modifier.background(surfaceColor.copy(alpha = cardAlpha))
-    } else {
-        Modifier
+        effectiveBlurActive && hasCustomBackground -> Modifier.background(surfaceColor.copy(alpha = cardAlpha))
+        else -> Modifier
     }
 
     Box(

@@ -68,6 +68,7 @@ import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Pin
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.PlayCircle
 import com.sukisu.nova.ui.component.Storefront
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Star
@@ -478,6 +479,35 @@ fun ColorPaletteScreenMiuix(
                         }
                         val hasCustomBg = state.customBackgroundUri.isNotEmpty()
                         val usingSystemWallpaper = state.useSystemWallpaper
+                        val hasDynamicBg = state.dynamicWallpaperPath.isNotEmpty()
+                        val dynamicWallpaperFile = state.dynamicWallpaperPath
+                            .takeIf { it.isNotEmpty() }
+                            ?.let(::File)
+                        val dynamicWallpaperKind = dynamicWallpaperFile
+                            ?.let { ImageStorage.dynamicWallpaperKind(it.absolutePath) }
+                        val dynamicWallpaperSize = dynamicWallpaperFile
+                            ?.takeIf { it.isFile }
+                            ?.length() ?: 0L
+                        val dynamicWallpaperSummary = if (
+                            dynamicWallpaperKind != null && dynamicWallpaperSize > 0L
+                        ) {
+                            val format = if (
+                                dynamicWallpaperKind == ImageStorage.DynamicWallpaperKind.MP4
+                            ) {
+                                "MP4"
+                            } else {
+                                "WebP"
+                            }
+                            listOf(
+                                format,
+                                android.text.format.Formatter.formatShortFileSize(
+                                    context,
+                                    dynamicWallpaperSize,
+                                ),
+                            ).joinToString(" · ")
+                        } else {
+                            stringResource(id = R.string.dynamic_wallpaper_settings_summary)
+                        }
 
                     if (selectedCategory == ThemeSettingsCategory.COLORS) {
                     AppCard(
@@ -760,6 +790,28 @@ fun ColorPaletteScreenMiuix(
                                         )
                                     }
                                 }
+                                HorizontalDivider()
+                                BasicComponent(
+                                    title = stringResource(id = R.string.dynamic_wallpaper_title),
+                                    summary = dynamicWallpaperSummary,
+                                    startAction = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.PlayCircle,
+                                            modifier = Modifier.padding(end = 6.dp),
+                                            contentDescription = stringResource(id = R.string.dynamic_wallpaper_title),
+                                            tint = colorScheme.onBackground
+                                        )
+                                    },
+                                    endActions = {
+                                        if (state.dynamicWallpaperPath.isNotEmpty()) {
+                                            MiuixTextButtonAffectedByBackground(
+                                                text = stringResource(id = R.string.settings_clear),
+                                                onClick = { actions.onClearDynamicWallpaper(context) }
+                                            )
+                                        }
+                                    },
+                                    onClick = actions.onOpenDynamicWallpaper,
+                                )
                                 if (usingSystemWallpaper || hasCustomBg) {
                                     HorizontalDivider()
                                     SwitchPreference(
@@ -814,7 +866,7 @@ fun ColorPaletteScreenMiuix(
                                     )
                                 }
 
-                                if (usingSystemWallpaper || hasCustomBg) {
+                                if (usingSystemWallpaper || hasCustomBg || hasDynamicBg) {
                                     HorizontalDivider()
                                     BasicComponent(
                                         title = stringResource(id = R.string.settings_background_appearance),
@@ -1038,6 +1090,28 @@ fun ColorPaletteScreenMiuix(
                             exit = shrinkVertically() + fadeOut(),
                         ) {
                             Column {
+                                val dynamicHomeCardFile = state.dynamicHomeCardPath
+                                    .takeIf { it.isNotEmpty() }?.let(::File)
+                                val dynamicHomeCardKind = dynamicHomeCardFile
+                                    ?.let { ImageStorage.dynamicWallpaperKind(it.absolutePath) }
+                                val dynamicHomeCardSize = dynamicHomeCardFile
+                                    ?.takeIf { it.isFile }?.length() ?: 0L
+                                val dynamicHomeCardSummary = if (
+                                    dynamicHomeCardKind != null && dynamicHomeCardSize > 0L
+                                ) {
+                                    val format = if (
+                                        dynamicHomeCardKind == ImageStorage.DynamicWallpaperKind.MP4
+                                    ) "MP4" else "WebP"
+                                    listOf(
+                                        format,
+                                        android.text.format.Formatter.formatShortFileSize(
+                                            context,
+                                            dynamicHomeCardSize,
+                                        ),
+                                    ).joinToString(" · ")
+                                } else {
+                                    stringResource(R.string.dynamic_home_card_summary)
+                                }
                                 HorizontalDivider()
                                 TabRowWithContour(
                                     tabs = listOf(
@@ -1078,7 +1152,29 @@ fun ColorPaletteScreenMiuix(
                                         )
                                     },
                                 )
-                                if (state.homeLayout == HomeLayout.CLASSIC && state.homeCardImagePath.isNotBlank()) {
+                                HorizontalDivider()
+                                BasicComponent(
+                                    title = stringResource(id = R.string.dynamic_home_card_title),
+                                    summary = dynamicHomeCardSummary,
+                                    startAction = {
+                                        Icon(
+                                            Icons.Rounded.PlayCircle,
+                                            modifier = Modifier.padding(end = 8.dp),
+                                            contentDescription = stringResource(R.string.dynamic_home_card_title),
+                                            tint = colorScheme.onBackground,
+                                        )
+                                    },
+                                    endActions = {
+                                        if (state.dynamicHomeCardPath.isNotBlank()) {
+                                            MiuixTextButtonAffectedByBackground(
+                                                text = stringResource(id = R.string.settings_clear),
+                                                onClick = { actions.onClearDynamicHomeCard(context) }
+                                            )
+                                        }
+                                    },
+                                    onClick = actions.onOpenDynamicHomeCard,
+                                )
+                                if (state.homeLayout == HomeLayout.CLASSIC && (state.homeCardImagePath.isNotBlank() || state.dynamicHomeCardPath.isNotBlank())) {
                                     SwitchPreference(
                                         title = stringResource(id = R.string.settings_hide_home_card_decoration),
                                         summary = stringResource(R.string.settings_hide_home_card_decoration_summary),
@@ -1234,16 +1330,20 @@ fun ColorPaletteScreenMiuix(
                                     )
                                     }
                                 }
+                                val hasAnyCardImage = state.homeCardImagePath.isNotBlank() ||
+                                    state.dynamicHomeCardPath.isNotBlank()
                                 val canUseStickers = state.homeLayout == HomeLayout.CLASSIC || (
                                     state.homeCardImageStyle == HomeCardImageStyle.BANNER &&
-                                        state.homeCardImagePath.isNotBlank() &&
+                                        hasAnyCardImage &&
                                         (state.backgroundPath.isNotBlank() ||
+                                            state.dynamicWallpaperPath.isNotEmpty() ||
                                             state.showHomeCardImageWithoutBackground)
                                     )
                                 val stickerBlockedByBackground =
                                     state.homeCardImageStyle == HomeCardImageStyle.BANNER &&
-                                        state.homeCardImagePath.isNotBlank() &&
+                                        hasAnyCardImage &&
                                         state.backgroundPath.isBlank() &&
+                                        state.dynamicWallpaperPath.isEmpty() &&
                                         !state.showHomeCardImageWithoutBackground
                                 if (canUseStickers) {
                                 BasicComponent(

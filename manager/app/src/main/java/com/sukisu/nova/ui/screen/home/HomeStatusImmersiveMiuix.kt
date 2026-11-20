@@ -38,6 +38,7 @@ import com.sukisu.nova.ui.component.HomeCardStickerOverlays
 import com.sukisu.nova.ui.component.miuix.AppCard
 import com.sukisu.nova.ui.theme.LocalBackgroundImagePath
 import com.sukisu.nova.ui.theme.isInDarkTheme
+import com.sukisu.nova.ui.component.background.DynamicWallpaperBackground
 import com.sukisu.nova.ui.util.CustomTextKey
 import com.sukisu.nova.ui.util.HomeCardImageStyle
 import com.sukisu.nova.ui.util.HomeStatusAlignment
@@ -61,7 +62,8 @@ fun ImmersiveStatusCardMiuix(
     val pillScale = HomeStatusStyle.coercePillScale(state.homePillScale)
     val widthFraction = HomeStatusStyle.coerceWidth(state.homeStatusWidthFraction)
     val hasBackground = LocalBackgroundImagePath.current.isNotEmpty()
-    val showImage = shouldShowHomeCardImage(
+    val hasDynamicCard = state.dynamicHomeCardPath.isNotEmpty()
+    val showImage = hasDynamicCard || shouldShowHomeCardImage(
         path = state.homeCardImagePath,
         hasCustomBackground = hasBackground,
         showWithoutBackground = state.showHomeCardImageWithoutBackground,
@@ -179,17 +181,28 @@ fun ImmersiveStatusCardMiuix(
                     .border(1.dp, borderColor, bannerShape)
                     .clickable(enabled = clickEnabled, onClick = onClick)
             ) {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(File(state.homeCardImagePath))
-                        .crossfade(true)
-                        .precision(Precision.EXACT)
-                        .build(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    filterQuality = FilterQuality.High,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                if (hasDynamicCard) {
+                    DynamicWallpaperBackground(
+                        path = state.dynamicHomeCardPath,
+                        muted = true,
+                        transform = state.dynamicHomeCardTransform,
+                        fps = state.dynamicPlaybackFps,
+                        speed = state.dynamicPlaybackSpeed,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(File(state.homeCardImagePath))
+                            .crossfade(true)
+                            .precision(Precision.EXACT)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        filterQuality = FilterQuality.High,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
                 HomeCardStickerOverlays(
                     stickers = state.homeCardStickers,
                     cardWidth = maxWidth,

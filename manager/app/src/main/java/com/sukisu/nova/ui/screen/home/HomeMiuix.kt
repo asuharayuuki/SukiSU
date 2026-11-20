@@ -40,6 +40,9 @@ import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -65,6 +68,7 @@ import com.sukisu.nova.KernelVersion
 import com.sukisu.nova.Natives
 import com.sukisu.nova.R
 import com.sukisu.nova.ui.component.WarningLevel
+import com.sukisu.nova.ui.component.background.DynamicWallpaperBackground
 import com.sukisu.nova.ui.component.HomeCardStickerOverlays
 import com.sukisu.nova.ui.component.dialog.rememberConfirmDialog
 import com.sukisu.nova.ui.component.miuix.AppCard
@@ -475,36 +479,54 @@ private fun ActiveStatusCard(
         )
     }
 
-    AppCard(
+    var dynamicCardFailed by remember(state.dynamicHomeCardPath) { mutableStateOf(false) }
+    val dynamicCardPath = state.dynamicHomeCardPath.takeIf { it.isNotEmpty() && !dynamicCardFailed }
+    val hasCardImage = dynamicCardPath != null || cardImagePainter != null
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(CardDefaults.CornerRadius))
-            .then(
-                if (cardImagePainter != null) {
-                    Modifier.drawPainterCover(cardImagePainter)
+    ) {
+        if (dynamicCardPath != null) {
+            DynamicWallpaperBackground(
+                path = dynamicCardPath,
+                muted = true,
+                transform = state.dynamicHomeCardTransform,
+                fps = state.dynamicPlaybackFps,
+                speed = state.dynamicPlaybackSpeed,
+                modifier = Modifier.matchParentSize(),
+                onError = { dynamicCardFailed = true },
+            )
+        }
+        AppCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (dynamicCardPath == null && cardImagePainter != null) {
+                        Modifier.drawPainterCover(cardImagePainter)
+                    } else {
+                        Modifier
+                    }
+                ),
+            colors = CardDefaults.defaultColors(
+                color = if (hasCardImage) {
+                    Color.Transparent
                 } else {
-                    Modifier
+                    backgroundAwareColor(
+                        when {
+                            isDynamicColor -> colorScheme.secondaryContainer
+                            isDark -> Color(0xFF1A3825)
+                            else -> Color(0xFFDFFAE4)
+                        }
+                    )
                 }
             ),
-        colors = CardDefaults.defaultColors(
-            color = if (cardImagePainter != null) {
-                Color.Transparent
-            } else {
-                backgroundAwareColor(
-                    when {
-                        isDynamicColor -> colorScheme.secondaryContainer
-                        isDark -> Color(0xFF1A3825)
-                        else -> Color(0xFFDFFAE4)
-                    }
-                )
-            }
-        ),
-        onClick = onClick,
-        showIndication = !state.isLateLoadMode,
-        pressFeedbackType = PressFeedbackType.Tilt
-    ) {
+            onClick = onClick,
+            showIndication = !state.isLateLoadMode,
+            pressFeedbackType = PressFeedbackType.Tilt
+        ) {
         BoxWithConstraints {
-            if (!(state.homeCardImagePath.isNotEmpty() && state.hideHomeCardDecoration)) {
+            if (!(hasCardImage && state.hideHomeCardDecoration)) {
                 Icon(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -556,7 +578,7 @@ private fun ActiveStatusCard(
                     }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (!(state.homeCardImagePath.isNotEmpty() && state.hideHomeCardStatusText)) {
+                    if (!(hasCardImage && state.hideHomeCardStatusText)) {
                         Text(
                             text = customText(CustomTextKey.HOME_STATUS_WORKING),
                             fontSize = 36.sp,
@@ -579,6 +601,7 @@ private fun ActiveStatusCard(
                 cardWidth = maxWidth,
             )
         }
+    }
     }
 }
 

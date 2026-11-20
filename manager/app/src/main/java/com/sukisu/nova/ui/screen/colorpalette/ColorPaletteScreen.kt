@@ -112,6 +112,12 @@ fun ColorPaletteScreen(section: String? = null, importUri: String? = null) {
             }
         },
         onClearCustomBackground = viewModel::clearCustomBackground,
+        onOpenDynamicWallpaper = { navigator.push(Route.DynamicWallpaper()) },
+        onOpenDynamicHomeCard = { navigator.push(Route.DynamicWallpaper(card = true)) },
+        onClearDynamicHomeCard = { ctx ->
+            viewModel.clearDynamicWallpaper(ctx, com.sukisu.nova.ui.component.background.DynamicWallpaperTarget.CARD)
+        },
+        onClearDynamicWallpaper = { ctx -> viewModel.clearDynamicWallpaper(ctx) },
         onPickHomeCardImage = viewModel::pickHomeCardImage,
         onClearHomeCardImage = viewModel::clearHomeCardImage,
         onSetHideHomeCardStatusText = viewModel::setHideHomeCardStatusText,

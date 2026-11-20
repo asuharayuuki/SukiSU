@@ -29,6 +29,13 @@ import com.sukisu.nova.data.repository.KEY_CUSTOM_HOME_TITLE
 import com.sukisu.nova.data.repository.KEY_HIDE_HOME_CARD_DECORATION
 import com.sukisu.nova.data.repository.KEY_HIDE_HOME_CARD_STATUS_TEXT
 import com.sukisu.nova.data.repository.KEY_HOME_CARD_STICKERS
+import com.sukisu.nova.data.repository.KEY_DYNAMIC_HOME_CARD_FIT
+import com.sukisu.nova.data.repository.KEY_DYNAMIC_WALLPAPER_FPS
+import com.sukisu.nova.data.repository.KEY_DYNAMIC_WALLPAPER_SPEED
+import com.sukisu.nova.data.repository.KEY_DYNAMIC_HOME_CARD_OFFSET_X
+import com.sukisu.nova.data.repository.KEY_DYNAMIC_HOME_CARD_OFFSET_Y
+import com.sukisu.nova.data.repository.KEY_DYNAMIC_HOME_CARD_PATH
+import com.sukisu.nova.data.repository.KEY_DYNAMIC_HOME_CARD_ZOOM
 import com.sukisu.nova.data.repository.KEY_HOME_CARD_IMAGE_PATH
 import com.sukisu.nova.data.repository.KEY_HOME_CARD_IMAGE_STYLE
 import com.sukisu.nova.data.repository.KEY_HOME_LAYOUT
@@ -47,6 +54,8 @@ import com.sukisu.nova.ui.screen.home.UpdateProgress
 import com.sukisu.nova.ui.screen.home.UpdateStage
 import com.sukisu.nova.ui.screen.home.getHomeModuleCount
 import com.sukisu.nova.ui.screen.home.getManagerVersion
+import com.sukisu.nova.ui.component.background.DynamicWallpaperFit
+import com.sukisu.nova.ui.component.background.DynamicWallpaperTransform
 import com.sukisu.nova.ui.util.checkNewCiVersion
 import com.sukisu.nova.ui.screen.home.formatZygiskImplementation
 import com.sukisu.nova.ui.util.checkNewVersion
@@ -57,6 +66,7 @@ import com.sukisu.nova.ui.util.getSELinuxStatusRaw
 import com.sukisu.nova.ui.util.getZygiskImplementationInfo
 import com.sukisu.nova.ui.util.HomeCardSticker
 import com.sukisu.nova.ui.util.HomeCardImageStyle
+import com.sukisu.nova.ui.util.ImageStorage
 import com.sukisu.nova.ui.util.HomeLayout
 import com.sukisu.nova.ui.util.HomeStatusAlignment
 import com.sukisu.nova.ui.util.HomeStatusStyle
@@ -76,6 +86,22 @@ class HomeViewModel(
         }
         if (key == null || key == KEY_HOME_CARD_IMAGE_PATH) {
             updateContent { it.copy(homeCardImagePath = existingHomeCardImage()) }
+        }
+        if (key == null || key == KEY_DYNAMIC_HOME_CARD_PATH) {
+            updateContent { it.copy(dynamicHomeCardPath = existingDynamicHomeCard()) }
+        }
+        if (key == null || key == KEY_DYNAMIC_HOME_CARD_FIT || key == KEY_DYNAMIC_HOME_CARD_ZOOM ||
+            key == KEY_DYNAMIC_HOME_CARD_OFFSET_X || key == KEY_DYNAMIC_HOME_CARD_OFFSET_Y
+        ) {
+            updateContent { it.copy(dynamicHomeCardTransform = dynamicHomeCardTransform()) }
+        }
+        if (key == null || key == KEY_DYNAMIC_WALLPAPER_FPS || key == KEY_DYNAMIC_WALLPAPER_SPEED) {
+            updateContent {
+                it.copy(
+                    dynamicPlaybackFps = settingsRepo.dynamicWallpaperFps,
+                    dynamicPlaybackSpeed = settingsRepo.dynamicWallpaperSpeed,
+                )
+            }
         }
         if (key == null || key == KEY_HIDE_HOME_CARD_STATUS_TEXT) {
             updateContent { it.copy(hideHomeCardStatusText = settingsRepo.hideHomeCardStatusText) }
@@ -135,6 +161,16 @@ class HomeViewModel(
     
     private fun existingHomeCardImage(): String =
         settingsRepo.homeCardImagePath.takeIf { it.isNotEmpty() && File(it).isFile } ?: ""
+
+    private fun existingDynamicHomeCard(): String =
+        ImageStorage.dynamicHomeCardFile(ksuApp)?.absolutePath.orEmpty()
+
+    private fun dynamicHomeCardTransform(): DynamicWallpaperTransform = DynamicWallpaperTransform(
+        fit = DynamicWallpaperFit.fromValue(settingsRepo.dynamicHomeCardFit),
+        zoom = settingsRepo.dynamicHomeCardZoom,
+        offsetX = settingsRepo.dynamicHomeCardOffsetX,
+        offsetY = settingsRepo.dynamicHomeCardOffsetY,
+    ).sanitized()
 
     private fun existingHomeCardStickers(): List<HomeCardSticker> =
         settingsRepo.homeCardStickers.filter { File(it.path).isFile }
@@ -363,6 +399,10 @@ class HomeViewModel(
             checkCiUpdateEnabled = settingsRepo.checkUpdate && settingsRepo.checkCiUpdate,
             customHomeTitle = settingsRepo.customHomeTitle,
             homeCardImagePath = existingHomeCardImage(),
+            dynamicHomeCardPath = existingDynamicHomeCard(),
+            dynamicHomeCardTransform = dynamicHomeCardTransform(),
+            dynamicPlaybackFps = settingsRepo.dynamicWallpaperFps,
+            dynamicPlaybackSpeed = settingsRepo.dynamicWallpaperSpeed,
             hideHomeCardStatusText = settingsRepo.hideHomeCardStatusText,
             hideHomeCardDecoration = settingsRepo.hideHomeCardDecoration,
             homeCardStickers = existingHomeCardStickers(),

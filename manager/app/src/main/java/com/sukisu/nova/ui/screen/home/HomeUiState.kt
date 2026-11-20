@@ -2,6 +2,7 @@ package com.sukisu.nova.ui.screen.home
 
 import androidx.compose.runtime.Immutable
 import com.sukisu.nova.KernelVersion
+import com.sukisu.nova.ui.component.background.DynamicWallpaperTransform
 import com.sukisu.nova.ui.util.HomeCardSticker
 import com.sukisu.nova.ui.util.HomeCardImageStyle
 import com.sukisu.nova.ui.util.HomeLayout
@@ -94,6 +95,10 @@ data class HomeUiState(
     val showAiHomeCard: Boolean = false,
     val customHomeTitle: String = "",
     val homeCardImagePath: String = "",
+    val dynamicHomeCardPath: String = "",
+    val dynamicHomeCardTransform: DynamicWallpaperTransform = DynamicWallpaperTransform.Default,
+    val dynamicPlaybackFps: Int = 0,
+    val dynamicPlaybackSpeed: Float = 1f,
     val hideHomeCardStatusText: Boolean = false,
     val hideHomeCardDecoration: Boolean = false,
     val homeCardStickers: List<HomeCardSticker> = emptyList(),

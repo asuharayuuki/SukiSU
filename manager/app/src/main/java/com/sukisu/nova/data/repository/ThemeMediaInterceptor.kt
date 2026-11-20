@@ -13,7 +13,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 object ThemeMediaInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val response = chain.proceed(chain.request())
-        val body = response.body ?: return response
+        val body = response.body
         if (!response.isSuccessful) return response
         // Peek through the buffered source; peeking never consumes bytes, so the
         // original body stays readable when this is not a sealed image.

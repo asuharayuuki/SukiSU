@@ -326,9 +326,12 @@ object AiThemeController : AiThemeService {
         when (target.trim().lowercase().replace('-', '_')) {
             "background", "wallpaper" -> {
                 ImageStorage.clear(ksuApp)
+                ImageStorage.clearDynamicWallpaper(ksuApp)
                 repo.customBackgroundUri = ""
                 repo.customBackgroundUpdatedAt = System.currentTimeMillis()
-                "The custom background image was removed."
+                repo.dynamicWallpaperPath = ""
+                repo.dynamicWallpaperUpdatedAt = System.currentTimeMillis()
+                "The custom background image and dynamic wallpaper were removed."
             }
 
             "home_card", "home", "card" -> {

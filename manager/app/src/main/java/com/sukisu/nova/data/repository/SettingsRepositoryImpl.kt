@@ -42,6 +42,13 @@ private const val PIN_AUTO = "auto"
 internal const val KEY_CUSTOM_HOME_TITLE = "custom_home_title"
 internal const val KEY_CUSTOM_TEXTS = "custom_texts"
 internal const val KEY_HOME_CARD_IMAGE_PATH = "home_card_image_path"
+internal const val KEY_DYNAMIC_WALLPAPER_FPS = "dynamic_wallpaper_fps"
+internal const val KEY_DYNAMIC_WALLPAPER_SPEED = "dynamic_wallpaper_speed"
+internal const val KEY_DYNAMIC_HOME_CARD_PATH = "dynamic_home_card_path"
+internal const val KEY_DYNAMIC_HOME_CARD_FIT = "dynamic_home_card_fit"
+internal const val KEY_DYNAMIC_HOME_CARD_ZOOM = "dynamic_home_card_zoom"
+internal const val KEY_DYNAMIC_HOME_CARD_OFFSET_X = "dynamic_home_card_offset_x"
+internal const val KEY_DYNAMIC_HOME_CARD_OFFSET_Y = "dynamic_home_card_offset_y"
 internal const val KEY_HIDE_HOME_CARD_STATUS_TEXT = "hide_home_card_status_text"
 internal const val KEY_HIDE_HOME_CARD_DECORATION = "hide_home_card_decoration"
 internal const val KEY_HOME_CARD_STICKERS = "home_card_stickers"
@@ -111,6 +118,66 @@ class SettingsRepositoryImpl : SettingsRepository {
     override var customBackgroundUpdatedAt: Long
         get() = prefs.getLong("custom_bg_updated_at", 0L)
         set(value) = prefs.edit { putLong("custom_bg_updated_at", value) }
+
+    override var dynamicWallpaperPath: String
+        get() = prefs.getString("dynamic_wallpaper_path", "") ?: ""
+        set(value) = prefs.edit { putString("dynamic_wallpaper_path", value) }
+
+    override var dynamicWallpaperUpdatedAt: Long
+        get() = prefs.getLong("dynamic_wallpaper_updated_at", 0L)
+        set(value) = prefs.edit { putLong("dynamic_wallpaper_updated_at", value) }
+
+    override var dynamicWallpaperMuted: Boolean
+        get() = prefs.getBoolean("dynamic_wallpaper_muted", true)
+        set(value) = prefs.edit { putBoolean("dynamic_wallpaper_muted", value) }
+
+    override var dynamicWallpaperFit: Int
+        get() = prefs.getInt("dynamic_wallpaper_fit", 1)
+        set(value) = prefs.edit { putInt("dynamic_wallpaper_fit", value) }
+
+    override var dynamicWallpaperZoom: Float
+        get() = prefs.getFloat("dynamic_wallpaper_zoom", 1f)
+        set(value) = prefs.edit { putFloat("dynamic_wallpaper_zoom", value) }
+
+    override var dynamicWallpaperOffsetX: Float
+        get() = prefs.getFloat("dynamic_wallpaper_offset_x", 0f)
+        set(value) = prefs.edit { putFloat("dynamic_wallpaper_offset_x", value) }
+
+    override var dynamicWallpaperOffsetY: Float
+        get() = prefs.getFloat("dynamic_wallpaper_offset_y", 0f)
+        set(value) = prefs.edit { putFloat("dynamic_wallpaper_offset_y", value) }
+
+    override var dynamicWallpaperFps: Int
+        get() = prefs.getInt("dynamic_wallpaper_fps", 0)
+        set(value) = prefs.edit { putInt("dynamic_wallpaper_fps", value) }
+
+    override var dynamicWallpaperSpeed: Float
+        get() = prefs.getFloat("dynamic_wallpaper_speed", 1f)
+        set(value) = prefs.edit { putFloat("dynamic_wallpaper_speed", value) }
+
+    override var dynamicHomeCardPath: String
+        get() = prefs.getString("dynamic_home_card_path", "") ?: ""
+        set(value) = prefs.edit { putString("dynamic_home_card_path", value) }
+
+    override var dynamicHomeCardUpdatedAt: Long
+        get() = prefs.getLong("dynamic_home_card_updated_at", 0L)
+        set(value) = prefs.edit { putLong("dynamic_home_card_updated_at", value) }
+
+    override var dynamicHomeCardFit: Int
+        get() = prefs.getInt("dynamic_home_card_fit", 1)
+        set(value) = prefs.edit { putInt("dynamic_home_card_fit", value) }
+
+    override var dynamicHomeCardZoom: Float
+        get() = prefs.getFloat("dynamic_home_card_zoom", 1f)
+        set(value) = prefs.edit { putFloat("dynamic_home_card_zoom", value) }
+
+    override var dynamicHomeCardOffsetX: Float
+        get() = prefs.getFloat("dynamic_home_card_offset_x", 0f)
+        set(value) = prefs.edit { putFloat("dynamic_home_card_offset_x", value) }
+
+    override var dynamicHomeCardOffsetY: Float
+        get() = prefs.getFloat("dynamic_home_card_offset_y", 0f)
+        set(value) = prefs.edit { putFloat("dynamic_home_card_offset_y", value) }
 
     override var useSystemWallpaper: Boolean
         get() = prefs.getBoolean("use_system_wallpaper", false)

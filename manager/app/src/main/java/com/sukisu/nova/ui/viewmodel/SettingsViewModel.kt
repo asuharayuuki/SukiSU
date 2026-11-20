@@ -38,6 +38,8 @@ import com.sukisu.nova.ui.util.HomeCardStickerTransform
 import com.sukisu.nova.ui.util.HomeLayout
 import com.sukisu.nova.ui.util.HomeStatusAlignment
 import com.sukisu.nova.ui.util.HomeStatusStyle
+import com.sukisu.nova.ui.component.background.DynamicWallpaperTarget
+import com.sukisu.nova.ui.component.background.DynamicWallpaperTransform
 import com.sukisu.nova.ui.util.ImageStorage
 import com.sukisu.nova.ui.util.ImportedTheme
 import com.sukisu.nova.ui.util.ImportedThemeVariant
@@ -114,6 +116,21 @@ class SettingsViewModel(
         imageEffectsPresent = initialAppearanceData?.image != null,
         appearance = AppearanceOverlayStore.load(repo),
         appearanceData = initialAppearanceData,
+        dynamicWallpaperPath = ImageStorage.dynamicWallpaperFile(ksuApp)?.absolutePath.orEmpty(),
+        dynamicWallpaperUpdatedAt = repo.dynamicWallpaperUpdatedAt,
+        dynamicWallpaperMuted = repo.dynamicWallpaperMuted,
+        dynamicWallpaperFit = repo.dynamicWallpaperFit,
+        dynamicWallpaperZoom = repo.dynamicWallpaperZoom,
+        dynamicWallpaperOffsetX = repo.dynamicWallpaperOffsetX,
+        dynamicWallpaperOffsetY = repo.dynamicWallpaperOffsetY,
+        dynamicWallpaperFps = repo.dynamicWallpaperFps,
+        dynamicWallpaperSpeed = repo.dynamicWallpaperSpeed,
+        dynamicHomeCardPath = ImageStorage.dynamicHomeCardFile(ksuApp)?.absolutePath.orEmpty(),
+        dynamicHomeCardUpdatedAt = repo.dynamicHomeCardUpdatedAt,
+        dynamicHomeCardFit = repo.dynamicHomeCardFit,
+        dynamicHomeCardZoom = repo.dynamicHomeCardZoom,
+        dynamicHomeCardOffsetX = repo.dynamicHomeCardOffsetX,
+        dynamicHomeCardOffsetY = repo.dynamicHomeCardOffsetY,
     ))
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
@@ -222,6 +239,16 @@ class SettingsViewModel(
             val isLateLoadMode = Natives.isLateLoadMode
             val systemWallpaperPath = ImageStorage.systemWallpaperFile(ksuApp)
                 .takeIf { it.isFile }?.absolutePath.orEmpty()
+            // A wallpaper file deleted outside the app leaves a stale path; hide it until the
+            // user picks a new one instead of pointing the renderer at a missing file.
+            val dynamicWallpaperPath = ImageStorage.dynamicWallpaperFile(ksuApp)?.absolutePath.orEmpty()
+            if (dynamicWallpaperPath.isEmpty() && repo.dynamicWallpaperPath.isNotEmpty()) {
+                repo.dynamicWallpaperPath = ""
+            }
+            val dynamicHomeCardPath = ImageStorage.dynamicHomeCardFile(ksuApp)?.absolutePath.orEmpty()
+            if (dynamicHomeCardPath.isEmpty() && repo.dynamicHomeCardPath.isNotEmpty()) {
+                repo.dynamicHomeCardPath = ""
+            }
 
             _uiState.update {
                 it.copy(
@@ -310,6 +337,21 @@ homePillScale = HomeStatusStyle.coercePillScale(repo.homePillScale),
                     isLateLoadMode = isLateLoadMode,
                     customBackgroundUri = repo.customBackgroundUri,
                     customBackgroundUpdatedAt = repo.customBackgroundUpdatedAt,
+                    dynamicWallpaperPath = dynamicWallpaperPath,
+                    dynamicWallpaperUpdatedAt = repo.dynamicWallpaperUpdatedAt,
+                    dynamicWallpaperMuted = repo.dynamicWallpaperMuted,
+                    dynamicWallpaperFit = repo.dynamicWallpaperFit,
+                    dynamicWallpaperZoom = repo.dynamicWallpaperZoom,
+                    dynamicWallpaperOffsetX = repo.dynamicWallpaperOffsetX,
+                    dynamicWallpaperOffsetY = repo.dynamicWallpaperOffsetY,
+                    dynamicWallpaperFps = repo.dynamicWallpaperFps,
+                    dynamicWallpaperSpeed = repo.dynamicWallpaperSpeed,
+                    dynamicHomeCardPath = dynamicHomeCardPath,
+                    dynamicHomeCardUpdatedAt = repo.dynamicHomeCardUpdatedAt,
+                    dynamicHomeCardFit = repo.dynamicHomeCardFit,
+                    dynamicHomeCardZoom = repo.dynamicHomeCardZoom,
+                    dynamicHomeCardOffsetX = repo.dynamicHomeCardOffsetX,
+                    dynamicHomeCardOffsetY = repo.dynamicHomeCardOffsetY,
                     useSystemWallpaper = repo.useSystemWallpaper && systemWallpaperPath.isNotEmpty(),
                     systemWallpaperPath = systemWallpaperPath,
                     extractColorFromBackground = repo.derivesKeyColorFromBackground(),
@@ -420,10 +462,27 @@ homePillScale = HomeStatusStyle.coercePillScale(repo.homePillScale),
         val useSystemWallpaper = repo.useSystemWallpaper
         val systemWallpaperPath = ImageStorage.systemWallpaperFile(ksuApp)
             .takeIf { it.isFile }?.absolutePath.orEmpty()
+        val dynamicWallpaperPath = ImageStorage.dynamicWallpaperFile(ksuApp)?.absolutePath.orEmpty()
+        val dynamicHomeCardPath = ImageStorage.dynamicHomeCardFile(ksuApp)?.absolutePath.orEmpty()
         _uiState.update {
             it.copy(
                 customBackgroundUri = repo.customBackgroundUri,
                 customBackgroundUpdatedAt = repo.customBackgroundUpdatedAt,
+                dynamicWallpaperPath = dynamicWallpaperPath,
+                dynamicWallpaperUpdatedAt = repo.dynamicWallpaperUpdatedAt,
+                dynamicWallpaperMuted = repo.dynamicWallpaperMuted,
+                dynamicWallpaperFit = repo.dynamicWallpaperFit,
+                dynamicWallpaperZoom = repo.dynamicWallpaperZoom,
+                dynamicWallpaperOffsetX = repo.dynamicWallpaperOffsetX,
+                dynamicWallpaperOffsetY = repo.dynamicWallpaperOffsetY,
+                dynamicWallpaperFps = repo.dynamicWallpaperFps,
+                dynamicWallpaperSpeed = repo.dynamicWallpaperSpeed,
+                dynamicHomeCardPath = dynamicHomeCardPath,
+                dynamicHomeCardUpdatedAt = repo.dynamicHomeCardUpdatedAt,
+                dynamicHomeCardFit = repo.dynamicHomeCardFit,
+                dynamicHomeCardZoom = repo.dynamicHomeCardZoom,
+                dynamicHomeCardOffsetX = repo.dynamicHomeCardOffsetX,
+                dynamicHomeCardOffsetY = repo.dynamicHomeCardOffsetY,
                 cardBackgroundAlphaPercent = repo.cardBackgroundAlphaPercent,
                 customBackgroundBlurPercent = repo.customBackgroundBlurPercent,
                 customBackgroundScrimPercent = repo.customBackgroundScrimPercent,
@@ -540,6 +599,179 @@ homePillScale = HomeStatusStyle.coercePillScale(repo.homePillScale),
                 )
             }
         }
+    }
+
+    /**
+     * Validates and copies a picked MP4/WebP into the preview cache. The result goes back to the
+     * screen so size/format errors can be shown instead of failing silently.
+     */
+    fun stageDynamicWallpaper(
+        context: Context,
+        uri: Uri,
+        onResult: (ImageStorage.DynamicWallpaperResult) -> Unit,
+    ) {
+        viewModelScope.launch {
+            val result = try {
+                ImageStorage.stageDynamicWallpaper(context, uri)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                ImageStorage.DynamicWallpaperResult.Failed
+            }
+            onResult(result)
+        }
+    }
+
+    fun commitDynamicWallpaper(
+        context: Context,
+        stagedPath: String,
+        target: DynamicWallpaperTarget = DynamicWallpaperTarget.APP,
+        onResult: (Boolean) -> Unit,
+    ) {
+        viewModelScope.launch {
+            val result = try {
+                when (target) {
+                    DynamicWallpaperTarget.APP ->
+                        ImageStorage.commitStagedDynamicWallpaper(context, stagedPath)
+
+                    DynamicWallpaperTarget.CARD ->
+                        ImageStorage.commitStagedDynamicHomeCard(context, stagedPath)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            if (result is ImageStorage.DynamicWallpaperResult.Ready) {
+                ImageStorage.discardStagedDynamicWallpaper(stagedPath)
+                val updatedAt = System.currentTimeMillis()
+                when (target) {
+                    DynamicWallpaperTarget.APP -> {
+                        repo.dynamicWallpaperPath = result.path
+                        repo.dynamicWallpaperUpdatedAt = updatedAt
+                        _uiState.update {
+                            it.copy(
+                                dynamicWallpaperPath = result.path,
+                                dynamicWallpaperUpdatedAt = updatedAt,
+                            )
+                        }
+                    }
+
+                    DynamicWallpaperTarget.CARD -> {
+                        repo.dynamicHomeCardPath = result.path
+                        repo.dynamicHomeCardUpdatedAt = updatedAt
+                        _uiState.update {
+                            it.copy(
+                                dynamicHomeCardPath = result.path,
+                                dynamicHomeCardUpdatedAt = updatedAt,
+                            )
+                        }
+                    }
+                }
+                onResult(true)
+            } else {
+                onResult(false)
+            }
+        }
+    }
+
+    fun clearDynamicWallpaper(
+        context: Context,
+        target: DynamicWallpaperTarget = DynamicWallpaperTarget.APP,
+        onDone: () -> Unit = {},
+    ) {
+        viewModelScope.launch {
+            try {
+                when (target) {
+                    DynamicWallpaperTarget.APP -> ImageStorage.clearDynamicWallpaper(context)
+                    DynamicWallpaperTarget.CARD -> ImageStorage.clearDynamicHomeCard(context)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // The setting is cleared below even if a file could not be deleted.
+            }
+            val updatedAt = System.currentTimeMillis()
+            when (target) {
+                DynamicWallpaperTarget.APP -> {
+                    repo.dynamicWallpaperPath = ""
+                    repo.dynamicWallpaperUpdatedAt = updatedAt
+                    _uiState.update {
+                        it.copy(
+                            dynamicWallpaperPath = "",
+                            dynamicWallpaperUpdatedAt = updatedAt,
+                        )
+                    }
+                }
+
+                DynamicWallpaperTarget.CARD -> {
+                    repo.dynamicHomeCardPath = ""
+                    repo.dynamicHomeCardUpdatedAt = updatedAt
+                    _uiState.update {
+                        it.copy(
+                            dynamicHomeCardPath = "",
+                            dynamicHomeCardUpdatedAt = updatedAt,
+                        )
+                    }
+                }
+            }
+            onDone()
+        }
+    }
+
+    fun setDynamicWallpaperTransform(
+        target: DynamicWallpaperTarget,
+        transform: DynamicWallpaperTransform,
+    ) {
+        val sanitized = transform.sanitized()
+        when (target) {
+            DynamicWallpaperTarget.APP -> {
+                repo.dynamicWallpaperFit = sanitized.fit.value
+                repo.dynamicWallpaperZoom = sanitized.zoom
+                repo.dynamicWallpaperOffsetX = sanitized.offsetX
+                repo.dynamicWallpaperOffsetY = sanitized.offsetY
+                _uiState.update {
+                    it.copy(
+                        dynamicWallpaperFit = sanitized.fit.value,
+                        dynamicWallpaperZoom = sanitized.zoom,
+                        dynamicWallpaperOffsetX = sanitized.offsetX,
+                        dynamicWallpaperOffsetY = sanitized.offsetY,
+                    )
+                }
+            }
+
+            DynamicWallpaperTarget.CARD -> {
+                repo.dynamicHomeCardFit = sanitized.fit.value
+                repo.dynamicHomeCardZoom = sanitized.zoom
+                repo.dynamicHomeCardOffsetX = sanitized.offsetX
+                repo.dynamicHomeCardOffsetY = sanitized.offsetY
+                _uiState.update {
+                    it.copy(
+                        dynamicHomeCardFit = sanitized.fit.value,
+                        dynamicHomeCardZoom = sanitized.zoom,
+                        dynamicHomeCardOffsetX = sanitized.offsetX,
+                        dynamicHomeCardOffsetY = sanitized.offsetY,
+                    )
+                }
+            }
+        }
+    }
+
+    fun setDynamicWallpaperMuted(muted: Boolean) {
+        repo.dynamicWallpaperMuted = muted
+        _uiState.update { it.copy(dynamicWallpaperMuted = muted) }
+    }
+
+    fun setDynamicWallpaperFps(fps: Int) {
+        val coerced = if (fps in intArrayOf(0, 24, 30, 60)) fps else 0
+        repo.dynamicWallpaperFps = coerced
+        _uiState.update { it.copy(dynamicWallpaperFps = coerced) }
+    }
+
+    fun setDynamicWallpaperSpeed(speed: Float) {
+        val coerced = speed.coerceIn(0.25f, 2f)
+        repo.dynamicWallpaperSpeed = coerced
+        _uiState.update { it.copy(dynamicWallpaperSpeed = coerced) }
     }
 
     fun setCardBackgroundAlphaPercent(percent: Int) {
@@ -2126,6 +2358,8 @@ homePillScale = if (options.homeCardDisplay) variant.data.homePillScale else nul
             AdaptiveThemeStore.sync(repo, isEffectiveDarkMode(ksuApp))
             val systemWallpaperPath = ImageStorage.systemWallpaperFile(ksuApp)
                 .takeIf { it.isFile }?.absolutePath.orEmpty()
+            val dynamicWallpaperPath = ImageStorage.dynamicWallpaperFile(ksuApp)?.absolutePath.orEmpty()
+            val dynamicHomeCardPath = ImageStorage.dynamicHomeCardFile(ksuApp)?.absolutePath.orEmpty()
             _uiState.update {
                 it.copy(
                     themeMode = repo.themeMode,
@@ -2135,6 +2369,21 @@ homePillScale = if (options.homeCardDisplay) variant.data.homePillScale else nul
                     colorSpec = repo.colorSpec,
                     customBackgroundUri = repo.customBackgroundUri,
                     customBackgroundUpdatedAt = repo.customBackgroundUpdatedAt,
+                    dynamicWallpaperPath = dynamicWallpaperPath,
+                    dynamicWallpaperUpdatedAt = repo.dynamicWallpaperUpdatedAt,
+                    dynamicWallpaperMuted = repo.dynamicWallpaperMuted,
+                    dynamicWallpaperFit = repo.dynamicWallpaperFit,
+                    dynamicWallpaperZoom = repo.dynamicWallpaperZoom,
+                    dynamicWallpaperOffsetX = repo.dynamicWallpaperOffsetX,
+                    dynamicWallpaperOffsetY = repo.dynamicWallpaperOffsetY,
+                    dynamicWallpaperFps = repo.dynamicWallpaperFps,
+                    dynamicWallpaperSpeed = repo.dynamicWallpaperSpeed,
+                    dynamicHomeCardPath = dynamicHomeCardPath,
+                    dynamicHomeCardUpdatedAt = repo.dynamicHomeCardUpdatedAt,
+                    dynamicHomeCardFit = repo.dynamicHomeCardFit,
+                    dynamicHomeCardZoom = repo.dynamicHomeCardZoom,
+                    dynamicHomeCardOffsetX = repo.dynamicHomeCardOffsetX,
+                    dynamicHomeCardOffsetY = repo.dynamicHomeCardOffsetY,
                     useSystemWallpaper = repo.useSystemWallpaper && systemWallpaperPath.isNotEmpty(),
                     systemWallpaperPath = systemWallpaperPath,
                     cardBackgroundAlphaPercent = repo.cardBackgroundAlphaPercent,
@@ -2459,6 +2708,8 @@ homePillScale = repo.homePillScale,
         viewModelScope.launch {
             val defaultBlur = ImageStorage.defaultBackgroundBlurPercent(ksuApp)
             ImageStorage.clear(ksuApp)
+            ImageStorage.clearDynamicWallpaper(ksuApp)
+            ImageStorage.clearDynamicHomeCard(ksuApp)
             ImageStorage.clearHomeCardImage(ksuApp)
             ImageStorage.clearHomeCardSticker(ksuApp)
             ImageStorage.clearBottomBarIcons(ksuApp)
@@ -2468,6 +2719,21 @@ homePillScale = repo.homePillScale,
 
             repo.customBackgroundUri = ""
             repo.customBackgroundUpdatedAt = 0L
+            repo.dynamicWallpaperPath = ""
+            repo.dynamicWallpaperUpdatedAt = 0L
+            repo.dynamicWallpaperFit = 1
+            repo.dynamicWallpaperZoom = 1f
+            repo.dynamicWallpaperOffsetX = 0f
+            repo.dynamicWallpaperOffsetY = 0f
+            repo.dynamicWallpaperMuted = true
+            repo.dynamicWallpaperFps = 0
+            repo.dynamicWallpaperSpeed = 1f
+            repo.dynamicHomeCardPath = ""
+            repo.dynamicHomeCardUpdatedAt = 0L
+            repo.dynamicHomeCardFit = 1
+            repo.dynamicHomeCardZoom = 1f
+            repo.dynamicHomeCardOffsetX = 0f
+            repo.dynamicHomeCardOffsetY = 0f
             repo.useSystemWallpaper = false
             repo.homeCardImagePath = ""
             repo.homeCardStickers = emptyList()
@@ -2503,6 +2769,21 @@ homePillScale = repo.homePillScale,
                 it.copy(
                     customBackgroundUri = "",
                     customBackgroundUpdatedAt = 0L,
+                    dynamicWallpaperPath = "",
+                    dynamicWallpaperUpdatedAt = 0L,
+                    dynamicWallpaperFit = 1,
+                    dynamicWallpaperZoom = 1f,
+                    dynamicWallpaperOffsetX = 0f,
+                    dynamicWallpaperOffsetY = 0f,
+                    dynamicWallpaperMuted = true,
+                    dynamicWallpaperFps = 0,
+                    dynamicWallpaperSpeed = 1f,
+                    dynamicHomeCardPath = "",
+                    dynamicHomeCardUpdatedAt = 0L,
+                    dynamicHomeCardFit = 1,
+                    dynamicHomeCardZoom = 1f,
+                    dynamicHomeCardOffsetX = 0f,
+                    dynamicHomeCardOffsetY = 0f,
                     useSystemWallpaper = false,
                     systemWallpaperPath = "",
                     isSystemWallpaperBusy = false,
@@ -3077,6 +3358,11 @@ homePillScale = repo.homePillScale,
             useSystemWallpaper = useSystemWallpaper,
             isSystemWallpaperBusy = isSystemWallpaperBusy,
             customBackgroundUri = customBackgroundUri,
+            dynamicWallpaperPath = dynamicWallpaperPath,
+            dynamicWallpaperUpdatedAt = dynamicWallpaperUpdatedAt,
+            dynamicWallpaperMuted = dynamicWallpaperMuted,
+            dynamicHomeCardPath = dynamicHomeCardPath,
+            dynamicHomeCardUpdatedAt = dynamicHomeCardUpdatedAt,
             cardBackgroundAlphaPercent = cardBackgroundAlphaPercent,
             customBackgroundBlurPercent = customBackgroundBlurPercent,
             customBackgroundScrimPercent = customBackgroundScrimPercent,
@@ -3091,9 +3377,9 @@ homePillScale = repo.homePillScale,
             hideHomeCardDecoration = hideHomeCardDecoration,
             homeCardStickers = homeCardStickers,
             homeLayout = homeLayout,
-homeStatusAlignment = homeStatusAlignment,
+            homeStatusAlignment = homeStatusAlignment,
             homeStatusScale = homeStatusScale,
-homePillScale = homePillScale,
+            homePillScale = homePillScale,
             homeStatusWidthFraction = homeStatusWidthFraction,
             homeCardImageStyle = homeCardImageStyle,
             showHomeCardImageWithoutBackground = showHomeCardImageWithoutBackground,

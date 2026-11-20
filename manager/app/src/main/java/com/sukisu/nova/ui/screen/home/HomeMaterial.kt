@@ -41,6 +41,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import com.sukisu.nova.ui.component.Storefront
+import com.sukisu.nova.ui.component.background.DynamicWallpaperBackground
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.LoadingIndicator
@@ -55,6 +56,9 @@ import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -407,23 +411,41 @@ private fun ActiveStatusCard(
         )
     }
 
-    val hideCardDecoration = state.homeCardImagePath.isNotEmpty() && state.hideHomeCardDecoration
-    Surface(
+    var dynamicCardFailed by remember(state.dynamicHomeCardPath) { mutableStateOf(false) }
+    val dynamicCardPath = state.dynamicHomeCardPath.takeIf { it.isNotEmpty() && !dynamicCardFailed }
+    val hasCardImage = dynamicCardPath != null || cardImagePainter != null
+    val hideCardDecoration = hasCardImage && state.hideHomeCardDecoration
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(HeroShape)
-            .then(
-                if (cardImagePainter != null) {
-                    Modifier.drawPainterCover(cardImagePainter)
-                } else {
-                    Modifier
-                }
-            ),
-        color = if (cardImagePainter != null) Color.Transparent else containerColor,
-        contentColor = contentColor,
-        shape = HeroShape,
-        onClick = onClick,
     ) {
+        if (dynamicCardPath != null) {
+            DynamicWallpaperBackground(
+                path = dynamicCardPath,
+                muted = true,
+                transform = state.dynamicHomeCardTransform,
+                fps = state.dynamicPlaybackFps,
+                speed = state.dynamicPlaybackSpeed,
+                modifier = Modifier.matchParentSize(),
+                onError = { dynamicCardFailed = true },
+            )
+        }
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (dynamicCardPath == null && cardImagePainter != null) {
+                        Modifier.drawPainterCover(cardImagePainter)
+                    } else {
+                        Modifier
+                    }
+                ),
+            color = if (hasCardImage) Color.Transparent else containerColor,
+            contentColor = contentColor,
+            shape = HeroShape,
+            onClick = onClick,
+        ) {
         BoxWithConstraints(
             modifier = if (hideCardDecoration) {
                 Modifier
@@ -472,7 +494,7 @@ private fun ActiveStatusCard(
                     }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (!(state.homeCardImagePath.isNotEmpty() && state.hideHomeCardStatusText)) {
+                    if (!(hasCardImage && state.hideHomeCardStatusText)) {
                         Text(
                             text = customText(CustomTextKey.HOME_STATUS_WORKING),
                             style = MaterialTheme.typography.displaySmall,
@@ -491,6 +513,7 @@ private fun ActiveStatusCard(
                 cardWidth = maxWidth,
             )
         }
+    }
     }
 }
 
