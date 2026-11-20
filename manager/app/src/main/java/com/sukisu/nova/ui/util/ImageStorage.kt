@@ -11,6 +11,7 @@ import android.os.Process
 import android.provider.OpenableColumns
 import android.system.Os
 import android.util.Base64
+import android.util.Log
 import com.materialkolor.quantize.QuantizerCelebi
 import com.materialkolor.score.Score
 import com.topjohnwu.superuser.CallbackList
@@ -26,6 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import androidx.core.graphics.scale
 
 object ImageStorage {
+    private const val TAG = "ImageStorage"
     private const val DIR_NAME = "backgrounds"
     private const val CROP_DIR_NAME = "background_crop"
     private const val FILE_NAME = "bg_image"
@@ -49,6 +51,8 @@ object ImageStorage {
     private const val SYSTEM_WALLPAPER_SIGNATURE_FILE_NAME = "system_wallpaper.sig"
     private const val MAX_SYSTEM_WALLPAPER_PIXELS = 150_000_000L
     private const val MAX_WALLPAPER_VALIDATION_DIMENSION = 1024
+    /** Bound the number of root copies attempted when a ROM has many wallpaper files. */
+    private const val MAX_WALLPAPER_CANDIDATES = 12
     private const val DYNAMIC_WALLPAPER_PREFIX = "dynamic_wallpaper"
     private const val DYNAMIC_CARD_PREFIX = "dynamic_home_card"
     private const val ADAPTIVE_DRAFT_DYNAMIC_WALLPAPER_PREFIX = "adaptive_draft_dynamic_wallpaper"
@@ -562,8 +566,10 @@ object ImageStorage {
      *
      * Android 13+ no longer lets third-party apps read the wallpaper through WallpaperManager
      * (Android 14 always throws), so the file behind the wallpaper service is copied with root
-     * access instead and then consumed by the normal background pipeline. [force] skips the
-     * signature check and is used when the user explicitly enables the switch.
+     * access instead and then consumed by the normal background pipeline. Android 15/16 and
+     * HyperOS may keep the wallpaper in a directory (`wallpaper/wallpaper`) or under the theme
+     * manager, so every known layout is probed until one produces a decodable image. [force]
+     * skips the signature check and is used when the user explicitly enables the switch.
      */
     suspend fun captureSystemWallpaper(
         context: Context,
@@ -573,31 +579,38 @@ object ImageStorage {
             try {
                 val dest = systemWallpaperFile(context)
                 val signatureFile = File(dest.parentFile, SYSTEM_WALLPAPER_SIGNATURE_FILE_NAME)
-                val source = resolveSystemWallpaperSource(systemWallpaperUserId())
-                    ?: return@withLock SystemWallpaperResult(
-                        path = dest.takeIf { !force && isDecodableImage(it) }?.absolutePath,
-                        changed = false,
-                    )
-                val signature = systemWallpaperSignature(source)
-                val signatureKey = signature?.let { "$source|$it" }
                 val previousSignature = runCatching { signatureFile.readText() }.getOrNull()
-                if (!force && dest.isFile && signatureKey != null && previousSignature == signatureKey &&
-                    isDecodableImage(dest)
-                ) {
-                    return@withLock SystemWallpaperResult(dest.absolutePath, false)
+
+                // Fast path: the file copied last time is still the current wallpaper.
+                if (!force && dest.isFile && previousSignature != null) {
+                    val cachedSource = previousSignature.substringBeforeLast('|')
+                    val cachedKey = systemWallpaperSignature(cachedSource)
+                        ?.let { "$cachedSource|$it" }
+                    if (cachedKey != null && cachedKey == previousSignature &&
+                        isDecodableImage(dest)
+                    ) {
+                        return@withLock SystemWallpaperResult(dest.absolutePath, false)
+                    }
                 }
 
-                if (!writeSystemWallpaperWithRoot(source, dest)) {
-                    return@withLock SystemWallpaperResult(
-                        path = dest.takeIf { !force && isDecodableImage(it) }?.absolutePath,
-                        changed = false,
-                    )
+                val sources = resolveSystemWallpaperSources(systemWallpaperUserId())
+                for (source in sources) {
+                    if (!writeSystemWallpaperWithRoot(source, dest)) {
+                        Log.w(TAG, "Unreadable system wallpaper candidate: $source")
+                        continue
+                    }
+                    val signatureKey = systemWallpaperSignature(source)?.let { "$source|$it" }
+                    if (signatureKey != null) {
+                        runCatching { signatureFile.writeText(signatureKey) }
+                    }
+                    return@withLock SystemWallpaperResult(dest.absolutePath, true)
                 }
 
-                if (signatureKey != null) {
-                    runCatching { signatureFile.writeText(signatureKey) }
-                }
-                SystemWallpaperResult(dest.absolutePath, true)
+                Log.w(TAG, "No readable system wallpaper; candidates: $sources")
+                SystemWallpaperResult(
+                    path = dest.takeIf { !force && isDecodableImage(it) }?.absolutePath,
+                    changed = false,
+                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -698,46 +711,93 @@ object ImageStorage {
     
     private fun systemWallpaperUserId(): Int = Process.myUid() / 100000
 
-    private fun resolveSystemWallpaperSource(userId: Int): String? {
-        val candidates = buildList {
-            // AOSP / most OEMs.
-            add("/data/system/users/$userId/wallpaper")
-            add("/data/system/users/$userId/wallpaper_orig")
+    private fun resolveSystemWallpaperSources(userId: Int): List<String> {
+        // Home-screen candidates first; lock-screen copies are only a fallback.
+        val home = listOf(
+            // AOSP and most OEMs keep this as a file. Android 15/16 may turn it into a
+            // directory with `wallpaper` / `wallpaper_lock` children.
+            "/data/system/users/$userId/wallpaper",
+            "/data/system/users/$userId/wallpaper/wallpaper",
+            "/data/system/users/$userId/wallpaper/home_wallpaper.jpg",
+            "/data/system/users/$userId/wallpaper/home_wallpaper.png",
+            "/data/system/users/$userId/wallpaper/home_wallpaper.webp",
             // MIUI/HyperOS keep their own home wallpaper under the theme manager. On some ROMs
             // only this copy is updated, so it is a first-class candidate rather than a fallback.
-            add("/data/system/theme_magic/users/$userId/wallpaper/image/home_wallpaper.jpg")
-            add("/data/system/theme_magic/users/$userId/wallpaper/image/home_wallpaper.png")
-        }
-        var best: String? = null
-        var bestModified = Long.MIN_VALUE
-        for (path in candidates) {
-            val modified = wallpaperFileInfo(path)?.first ?: continue
-            // Prefer the newest file: after a wallpaper change one of the copies may be stale.
-            if (modified > bestModified) {
-                best = path
-                bestModified = modified
-            }
-        }
-        if (best != null) return best
+            "/data/system/theme_magic/users/$userId/wallpaper/image/home_wallpaper.jpg",
+            "/data/system/theme_magic/users/$userId/wallpaper/image/home_wallpaper.png",
+            "/data/system/theme_magic/users/$userId/wallpaper/image/home_wallpaper.webp",
+            "/data/system/theme_magic/users/$userId/wallpaper/home_wallpaper.jpg",
+            "/data/system/theme_magic/users/$userId/wallpaper/home_wallpaper.png",
+            "/data/system/theme_magic/users/$userId/wallpaper/home_wallpaper.webp",
+            // The pre-crop original is a last home-screen fallback.
+            "/data/system/users/$userId/wallpaper/wallpaper_orig",
+            "/data/system/users/$userId/wallpaper_orig",
+        )
+        val lock = listOf(
+            "/data/system/users/$userId/wallpaper/wallpaper_lock",
+            "/data/system/users/$userId/wallpaper_lock",
+            "/data/system/theme_magic/users/$userId/wallpaper/image/lock_wallpaper.jpg",
+            "/data/system/theme_magic/users/$userId/wallpaper/image/lock_wallpaper.png",
+            "/data/system/theme_magic/users/$userId/wallpaper/image/lock_wallpaper.webp",
+        )
 
-        // Last resort for ROMs with a custom layout that still use a recognizable file name.
-        val discovered = runCatching {
+        fun existing(paths: List<String>): List<Pair<String, Long>> =
+            paths.mapNotNull { path ->
+                wallpaperFileInfo(path)?.let { info -> path to info.first }
+            }.sortedByDescending { it.second }
+
+        val knownHome = existing(home)
+        val knownLock = existing(lock)
+        val knownPaths = (knownHome + knownLock).map { it.first }.toSet()
+        val discovered = discoverSystemWallpaperFiles(userId)
+            .asSequence()
+            .filter { it !in knownPaths }
+            .mapNotNull { path -> wallpaperFileInfo(path)?.let { info -> path to info.first } }
+            .sortedByDescending { it.second }
+            .toList()
+        val discoveredHome = discovered.filterNot { it.first.isLockWallpaper() }
+        val discoveredLock = discovered.filter { it.first.isLockWallpaper() }
+
+        // Newest first inside each tier so a wallpaper change wins over a stale copy, even when
+        // the fresh file was only found by the layout discovery above.
+        val homeCandidates = (knownHome + discoveredHome).sortedByDescending { it.second }
+        val lockCandidates = (discoveredLock + knownLock).sortedByDescending { it.second }
+        return (homeCandidates + lockCandidates)
+            .map { it.first }
+            .distinct()
+            .take(MAX_WALLPAPER_CANDIDATES)
+    }
+
+    private fun String.isLockWallpaper(): Boolean =
+        substringAfterLast('/').contains("lock", ignoreCase = true)
+
+    /**
+     * Last resort for ROMs with a custom layout. Android 15/16 and HyperOS can create files with
+     * names we do not know ahead of time (for example `wallpaper_lock_<timestamp>.jpg`), so the
+     * user and theme directories are searched for anything that looks like wallpaper media.
+     */
+    private fun discoverSystemWallpaperFiles(userId: Int): List<String> {
+        val roots = listOf(
+            "/data/system/users/$userId",
+            "/data/system/theme_magic/users/$userId",
+        )
+        val command = "find " + roots.joinToString(" ") { it.shellQuote() } +
+            " -maxdepth 8 -type f -iname '*wallpaper*' -size +10k 2>/dev/null | head -40"
+        return runCatching {
             getRootShell().newJob()
-                .add("find /data/system -maxdepth 7 -type f -iname 'home_wallpaper.*' 2>/dev/null | head -5")
+                .add(command)
                 .exec().out
                 .map { it.trim() }
-                .filter { it.isNotEmpty() }
+                .filter { it.isNotEmpty() && it.isWallpaperImageFile() }
         }.getOrDefault(emptyList())
-        var discoveredBest: String? = null
-        var discoveredModified = Long.MIN_VALUE
-        for (path in discovered) {
-            val modified = wallpaperFileInfo(path)?.first ?: continue
-            if (modified > discoveredModified) {
-                discoveredBest = path
-                discoveredModified = modified
-            }
-        }
-        return discoveredBest
+    }
+
+    private fun String.isWallpaperImageFile(): Boolean {
+        val name = substringAfterLast('/').lowercase()
+        if ('.' !in name) return true
+        return name.substringAfterLast('.') in setOf(
+            "jpg", "jpeg", "png", "webp", "heic", "heif", "avif", "bmp",
+        )
     }
 
     
