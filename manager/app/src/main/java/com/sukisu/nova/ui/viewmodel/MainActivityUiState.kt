@@ -12,6 +12,7 @@ data class MainActivityUiState(
     val enableProgressiveBlur: Boolean,
     val enableFloatingBottomBar: Boolean,
     val enableFloatingBottomBarBlur: Boolean,
+    val topBarStyle: Int = 0,
     val enableNavigationBadge: Boolean,
     val enableSwipeDismiss: Boolean,
     val pagerInterceptionMode: Int,

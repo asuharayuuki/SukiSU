@@ -1181,6 +1181,14 @@
     <string name="settings_section_icon_text_summary">桌面圖示與頁面自訂文字</string>
     <string name="settings_section_bottom_bar">底欄與導覽</string>
     <string name="settings_section_bottom_bar_summary">自訂底欄圖示、懸浮底欄、毛玻璃效果與角標</string>
+    <string name="settings_section_top_bar">頂欄</string>
+    <string name="settings_section_top_bar_summary">標準、懸浮或液態玻璃頂欄，大標題隨捲動收攏為置中標題</string>
+    <string name="settings_top_bar_style">頂欄樣式</string>
+    <string name="settings_top_bar_style_summary">選擇頁面頂欄與搜尋框的繪製方式</string>
+    <string name="settings_top_bar_style_standard">標準</string>
+    <string name="settings_top_bar_style_floating">懸浮</string>
+    <string name="settings_top_bar_style_floating_glass">懸浮玻璃</string>
+    <string name="theme_category_top_bar">頂欄</string>
     <string name="settings_section_interaction">互動與手勢</string>
     <string name="settings_section_interaction_summary">預測性返回、滑動關閉、翻頁手勢與頁面縮放</string>
     <string name="settings_section_details">介面細節</string>
@@ -1238,7 +1246,7 @@
     <string name="theme_opt_app_icon">應用程式圖示</string>
     <string name="theme_opt_custom_texts">自訂文字</string>
     <string name="theme_opt_interface_mode">介面模式（Miuix / Material）</string>
-    <string name="theme_opt_interface_switches">介面開關（模糊、懸浮底欄、毛玻璃、導覽角標）</string>
+    <string name="theme_opt_interface_switches">介面開關（頂欄樣式、模糊、懸浮底欄、毛玻璃、導覽角標）</string>
     <string name="theme_opt_interaction">互動行為（預測性返回、滑動關閉、分頁手勢、頁面縮放）</string>
     <string name="theme_opt_module_display">模組顯示（排序與描述最大行數）</string>
     <string name="theme_opt_other">其他</string>

@@ -241,6 +241,10 @@ class SettingsRepositoryImpl : SettingsRepository {
         get() = prefs.getBoolean("bottom_bar_section_expanded", true)
         set(value) = prefs.edit { putBoolean("bottom_bar_section_expanded", value) }
 
+    override var topBarSectionExpanded: Boolean
+        get() = prefs.getBoolean("top_bar_section_expanded", true)
+        set(value) = prefs.edit { putBoolean("top_bar_section_expanded", value) }
+
     override var interactionSectionExpanded: Boolean
         get() = prefs.getBoolean("interaction_section_expanded", true)
         set(value) = prefs.edit { putBoolean("interaction_section_expanded", value) }
@@ -540,6 +544,10 @@ class SettingsRepositoryImpl : SettingsRepository {
     override var enableFloatingBottomBarBlur: Boolean
         get() = prefs.getBoolean("enable_floating_bottom_bar_blur", false)
         set(value) = prefs.edit { putBoolean("enable_floating_bottom_bar_blur", value) }
+
+    override var topBarStyle: Int
+        get() = prefs.getInt("top_bar_style", 0).coerceIn(0, 2)
+        set(value) = prefs.edit { putInt("top_bar_style", value.coerceIn(0, 2)) }
 
     override var enableNavigationBadge: Boolean
         get() = prefs.getBoolean("enable_navigation_badge", true)

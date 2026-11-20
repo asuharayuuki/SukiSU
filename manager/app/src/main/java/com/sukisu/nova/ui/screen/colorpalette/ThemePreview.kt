@@ -55,7 +55,7 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.HorizontalDivider as MaterialDivider
 import androidx.compose.material3.Icon as MaterialIcon
-import androidx.compose.material3.LargeFlexibleTopAppBar
+import com.sukisu.nova.ui.component.material.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MotionScheme

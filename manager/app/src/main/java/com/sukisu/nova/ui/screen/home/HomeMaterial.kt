@@ -43,7 +43,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import com.sukisu.nova.ui.component.Storefront
 import com.sukisu.nova.ui.component.background.DynamicWallpaperBackground
-import androidx.compose.material3.LargeFlexibleTopAppBar
+import com.sukisu.nova.ui.component.material.LargeFlexibleTopAppBar
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme

@@ -56,6 +56,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ChromeReaderMode
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.automirrored.rounded.MenuOpen
 import androidx.compose.material.icons.filled.Brightness1
@@ -105,7 +106,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import com.sukisu.nova.ui.component.material.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberSliderState
 import androidx.compose.material3.rememberTopAppBarState
@@ -1636,6 +1637,40 @@ fun ColorPaletteScreenMaterial(
             }
             }
 
+            if (selectedCategory == ThemeSettingsCategory.TOP_BAR) {
+            item {
+                SegmentedColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    item {
+                        SegmentedCategoryHeader(
+                            title = stringResource(selectedCategory.titleRes),
+                            summary = stringResource(selectedCategory.summaryRes),
+                            icon = Icons.AutoMirrored.Rounded.ChromeReaderMode,
+                            expanded = state.topBarSectionExpanded,
+                            onClick = {
+                                actions.onSetTopBarSectionExpanded(
+                                    !state.topBarSectionExpanded,
+                                )
+                            },
+                        )
+                    }
+                    item(visible = true) {
+                        SegmentedDropdownItem(
+                            icon = Icons.AutoMirrored.Rounded.ChromeReaderMode,
+                            title = stringResource(R.string.settings_top_bar_style),
+                            summary = stringResource(R.string.settings_top_bar_style_summary),
+                            items = listOf(
+                                stringResource(R.string.settings_top_bar_style_standard),
+                                stringResource(R.string.settings_top_bar_style_floating),
+                                stringResource(R.string.settings_top_bar_style_floating_glass),
+                            ),
+                            selectedIndex = state.topBarStyle.coerceIn(0, 2),
+                            onItemSelected = actions.onSetTopBarStyle,
+                        )
+                    }
+                }
+            }
+            }
+
             if (selectedCategory == ThemeSettingsCategory.BOTTOM_BAR) {
             item {
                 val bottomBarIconPaths = uiState.bottomBarIcons
@@ -2210,14 +2245,13 @@ private fun MaterialCategoryGrid(
             modifier = Modifier.padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
         ) {
-            ThemeSettingsCategory.entries.chunked(4).forEach { row ->
+            ThemeSettingsCategory.entries.chunked(3).forEach { row ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
                 ) {
                     row.forEachIndexed { index, category ->
-                        ExpressiveToggleButton(
-                            checked = category == selected,
+                        ExpressiveToggleButton(                            checked = category == selected,
                             onCheckedChange = { checked ->
                                 if (checked) {
                                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)

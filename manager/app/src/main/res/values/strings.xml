@@ -314,6 +314,13 @@
     <string name="settings_section_icon_text_summary">Launcher icon and custom page text</string>
     <string name="settings_section_bottom_bar">Bottom bar &amp; navigation</string>
     <string name="settings_section_bottom_bar_summary">Custom tab icons, floating bar, glass and badges</string>
+    <string name="settings_section_top_bar">Top bar</string>
+    <string name="settings_section_top_bar_summary">Standard, floating or liquid glass headers; large titles fold into a centred row as you scroll</string>
+    <string name="settings_top_bar_style">Top bar style</string>
+    <string name="settings_top_bar_style_summary">Choose how page headers and their search field are drawn</string>
+    <string name="settings_top_bar_style_standard">Standard</string>
+    <string name="settings_top_bar_style_floating">Floating</string>
+    <string name="settings_top_bar_style_floating_glass">Floating glass</string>
     <string name="settings_section_interaction">Interaction &amp; gestures</string>
     <string name="settings_section_interaction_summary">Predictive back, swipe dismiss, pager gestures and page scale</string>
     <string name="settings_section_details">Interface details</string>
@@ -873,7 +880,7 @@
     <string name="theme_opt_app_icon">App icon</string>
     <string name="theme_opt_custom_texts">Custom texts</string>
     <string name="theme_opt_interface_mode">Interface mode (Miuix / Material)</string>
-    <string name="theme_opt_interface_switches">Interface switches (blur, floating bar, glass, badge)</string>
+    <string name="theme_opt_interface_switches">Interface switches (top bar style, blur, floating bar, glass, badge)</string>
     <string name="theme_opt_interaction">Interaction (predictive back, swipe dismiss, pager gesture, page scale)</string>
     <string name="theme_opt_module_display">Module display (sorting and description lines)</string>
     <string name="theme_opt_other">Other</string>
@@ -1625,6 +1632,7 @@
     <string name="theme_category_icon_text">Icon &amp; text</string>
     <string name="theme_category_home_card">Home card</string>
     <string name="theme_category_bottom_bar">Bottom bar</string>
+    <string name="theme_category_top_bar">Top bar</string>
     <string name="theme_category_interaction">Gestures</string>
     <string name="theme_category_details">Details</string>
     <string name="theme_category_theme_package">Theme</string>

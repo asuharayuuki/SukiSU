@@ -74,6 +74,7 @@ object AiThemeController : AiThemeService {
             put("progressive_blur", repo.enableProgressiveBlur)
             put("floating_bottom_bar", repo.enableFloatingBottomBar)
             put("floating_bottom_bar_blur", repo.enableFloatingBottomBarBlur)
+            put("top_bar_style", repo.topBarStyle)
             put("navigation_badge", repo.enableNavigationBadge)
             put("page_scale", repo.pageScale)
             put("enable_predictive_back", repo.enablePredictiveBack)
@@ -197,6 +198,14 @@ object AiThemeController : AiThemeService {
             "blur" -> repo.enableBlur = text.toBooleanValue()
             "progressive_blur" -> repo.enableProgressiveBlur = text.toBooleanValue()
             "floating_bottom_bar" -> repo.enableFloatingBottomBar = text.toBooleanValue()
+            "top_bar_style" -> {
+                val style = text.toIntOrNull()
+                    ?: throw IllegalArgumentException("top_bar_style must be 0 (standard), 1 (floating) or 2 (floating glass)")
+                require(style in 0..2) {
+                    "top_bar_style must be 0 (standard), 1 (floating) or 2 (floating glass)"
+                }
+                repo.topBarStyle = style
+            }
             "navigation_badge" -> repo.enableNavigationBadge = text.toBooleanValue()
             "page_scale" -> {
                 val scale = text.toFloatOrNull()
@@ -282,7 +291,7 @@ object AiThemeController : AiThemeService {
                     "color_style, color_spec, custom_home_title, app_icon, app_icon_dynamic_color, " +
                     "card_background_alpha, background_blur, background_scrim, " +
                     "extract_color_from_background, use_system_wallpaper, blur, " +
-                    "floating_bottom_bar, floating_bottom_bar_blur, navigation_badge, page_scale, " +
+                    "floating_bottom_bar, floating_bottom_bar_blur, top_bar_style, navigation_badge, page_scale, " +
                     "predictive_back, swipe_dismiss, pager_mode, module_description_max_lines, " +
                     "show_full_status, hide_home_warnings, home_layout, home_status_alignment, " +
                     "home_status_scale, " +
@@ -428,6 +437,7 @@ object AiThemeController : AiThemeService {
             appIconId = repo.appIconId.takeIf { it in builtinIconIds } ?: BuiltinAppIcons.DEFAULT_ID,
             enableFloatingBottomBar = repo.enableFloatingBottomBar,
             enableFloatingBottomBarBlur = repo.enableFloatingBottomBarBlur,
+            topBarStyle = repo.topBarStyle,
             enableNavigationBadge = repo.enableNavigationBadge,
             enablePredictiveBack = repo.enablePredictiveBack,
             enableSwipeDismiss = repo.enableSwipeDismiss,

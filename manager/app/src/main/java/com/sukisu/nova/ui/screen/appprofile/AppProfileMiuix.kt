@@ -96,7 +96,7 @@ import androidx.compose.ui.unit.IntOffset
 import com.sukisu.nova.ui.viewmodel.getTemplateInfoById
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TopAppBar
+import com.sukisu.nova.ui.component.miuix.TopAppBar
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons

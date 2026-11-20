@@ -65,6 +65,7 @@ fun ColorPaletteScreen(section: String? = null, importUri: String? = null) {
         onSetEnableProgressiveBlur = viewModel::setEnableProgressiveBlur,
         onSetEnableFloatingBottomBar = viewModel::setEnableFloatingBottomBar,
         onSetEnableFloatingBottomBarBlur = viewModel::setEnableFloatingBottomBarBlur,
+        onSetTopBarStyle = viewModel::setTopBarStyle,
         onSetEnableNavigationBadge = viewModel::setEnableNavigationBadge,
         onSetEnablePredictiveBack = {
             viewModel.setEnablePredictiveBack(it)
@@ -86,6 +87,7 @@ fun ColorPaletteScreen(section: String? = null, importUri: String? = null) {
         onSetHomeCardSectionExpanded = viewModel::setHomeCardSectionExpanded,
         onSetColorsSectionExpanded = viewModel::setColorsSectionExpanded,
         onSetBottomBarSectionExpanded = viewModel::setBottomBarSectionExpanded,
+        onSetTopBarSectionExpanded = viewModel::setTopBarSectionExpanded,
         onSetInteractionSectionExpanded = viewModel::setInteractionSectionExpanded,
         onSetDetailsSectionExpanded = viewModel::setDetailsSectionExpanded,
         onSetCustomHomeTitle = viewModel::setCustomHomeTitle,

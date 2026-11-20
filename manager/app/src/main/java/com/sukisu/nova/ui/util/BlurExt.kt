@@ -7,6 +7,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
@@ -15,6 +16,7 @@ import com.sukisu.nova.ui.theme.LocalAppBackgroundBackdrop
 import com.sukisu.nova.ui.theme.LocalBackgroundImagePath
 import com.sukisu.nova.ui.theme.LocalCardBackgroundAlpha
 import com.sukisu.nova.ui.theme.LocalEnableProgressiveBlur
+import com.sukisu.nova.ui.theme.LocalTopBarStyle
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.blur.Backdrop
 import top.yukonga.miuix.kmp.blur.BlendColorEntry
@@ -32,6 +34,19 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 const val BarBlurRadius: Float = 25f
 
 /**
+ * Stronger radius for the floating styles: their chrome is translucent glass, so the frost has
+ * to read clearly against the content scrolling underneath rather than fading into a surface
+ * coloured band.
+ */
+const val FloatingBarBlurRadius: Float = 38f
+
+/**
+ * The glass style uses the same frost as floating but a clearer, softer band, so it keeps reading
+ * as glass instead of collapsing into the plain floating treatment once blur is enabled.
+ */
+const val GlassBarBlurRadius: Float = 46f
+
+/**
  * Solid-enough tint layered over the bar blur. Over a custom background the cards already use
  * [LocalCardBackgroundAlpha], so the bar follows them; without one the tint has to be strong
  * enough to keep the bar chrome readable while content scrolls underneath.
@@ -44,8 +59,11 @@ fun rememberBlurBackdrop(
     allowProgressive: Boolean = true,
 ): LayerBackdrop? {
     // The progressive mode draws a blur band even when the plain bar blur is off, so it needs the
-    // same page capture. Callers that only want the page layer for another purpose can opt out.
-    val progressiveBlur = allowProgressive && LocalEnableProgressiveBlur.current &&
+    // same page capture. It follows its own switch only; the glass top-bar style is chrome and
+    // does not force a capture (the glass frost follows the blur switches like every other bar).
+    // Callers that only want the page layer for another purpose can opt out.
+    val progressiveBlur = allowProgressive &&
+        LocalEnableProgressiveBlur.current &&
         isRuntimeShaderSupported()
     if (!enableBlur && !progressiveBlur) return null
     if (!isRenderEffectSupported()) return null
@@ -134,13 +152,31 @@ fun BlurredBar(
             scrollBehavior?.state?.collapsedFraction?.let { it > 0.01f } ?: true
         }
     }
-    val effectiveBlurActive = blurActive ?: (scrollBehavior == null || isScrolled)
+    val topBarStyle = LocalTopBarStyle.current
+    val floating = topBarStyle.isFloating
+    // A floating bar has no page surface of its own, so it keeps sampling whatever scrolls under
+    // it even at rest. The frost itself follows the blur switches; choosing the glass style only
+    // changes the chrome (translucent pills and rim), never the blur mode.
+    val effectiveBlurActive = floating || (blurActive ?: (scrollBehavior == null || isScrolled))
     val progressiveBlur = LocalEnableProgressiveBlur.current && isRuntimeShaderSupported()
     val hasCustomBackground = LocalBackgroundImagePath.current.isNotEmpty()
     val cardAlpha = LocalCardBackgroundAlpha.current
     val surfaceColor = MiuixTheme.colorScheme.surface
     val blurBackdrop = rememberBackdropWithAppBackground(backdrop)
-    val tintAlpha = if (hasCustomBackground) cardAlpha else OpaqueBarTintAlpha
+    val baseTintAlpha = when {
+        floating && hasCustomBackground -> (cardAlpha * 0.6f).coerceIn(0.22f, 0.5f)
+        floating -> 0.16f
+        hasCustomBackground -> cardAlpha
+        else -> OpaqueBarTintAlpha
+    }
+    // Glass stays distinct from plain floating even with the same blur switches: it keeps a
+    // softer frost with much less tint, so the content reads through the band.
+    val tintAlpha = if (topBarStyle.isGlass) baseTintAlpha * 0.55f else baseTintAlpha
+    val blurRadius = when {
+        topBarStyle.isGlass -> GlassBarBlurRadius
+        floating -> FloatingBarBlurRadius
+        else -> BarBlurRadius
+    }
 
     val blurModifier = when {
         progressiveBlur && blurBackdrop != null -> {
@@ -152,6 +188,7 @@ fun BlurredBar(
                 gradient = progressiveGradient,
                 tint = surfaceColor,
                 tintAlpha = tintAlpha,
+                blurRadius = blurRadius,
             )
         }
         progressiveBlur -> {
@@ -159,15 +196,24 @@ fun BlurredBar(
             // could not be captured). Keep the bar readable instead of leaving it transparent.
             Modifier.background(surfaceColor.copy(alpha = tintAlpha))
         }
-        effectiveBlurActive && blurBackdrop != null -> Modifier.textureBlur(
+        blurBackdrop != null && effectiveBlurActive -> Modifier.textureBlur(
             backdrop = blurBackdrop,
             shape = RectangleShape,
-            blurRadius = BarBlurRadius,
+            blurRadius = blurRadius,
             colors = BlurColors(
                 blendColors = listOf(
                     BlendColorEntry(color = surfaceColor.copy(tintAlpha)),
                 ),
             ),
+        )
+        // A floating bar over a wallpaper keeps a soft scrim so the chrome stays readable even
+        // when blur is turned off entirely.
+        floating && hasCustomBackground -> Modifier.background(
+            Brush.verticalGradient(
+                0f to surfaceColor.copy(alpha = 0.22f),
+                0.65f to surfaceColor.copy(alpha = 0.08f),
+                1f to surfaceColor.copy(alpha = 0f),
+            )
         )
         effectiveBlurActive && hasCustomBackground -> Modifier.background(surfaceColor.copy(alpha = cardAlpha))
         else -> Modifier

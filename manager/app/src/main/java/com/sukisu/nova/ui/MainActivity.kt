@@ -148,6 +148,8 @@ import com.sukisu.nova.ui.theme.LocalEnableFloatingBottomBarBlur
 import com.sukisu.nova.ui.theme.LocalEnableNavigationBadge
 import com.sukisu.nova.ui.theme.LocalEnableProgressiveBlur
 import com.sukisu.nova.ui.theme.LocalModuleDescriptionMaxLines
+import com.sukisu.nova.ui.theme.LocalTopBarStyle
+import com.sukisu.nova.ui.theme.TopBarStyle
 import com.sukisu.nova.ui.util.BackgroundNavTransition
 import com.sukisu.nova.ui.util.ImageStorage
 import com.sukisu.nova.ui.util.LocaleHelper
@@ -269,7 +271,8 @@ class MainActivity : ComponentActivity() {
             val hasDynamicWallpaper = uiState.dynamicWallpaperPath.isNotEmpty() && !dynamicWallpaperFailed
             // Capture the wallpaper layer for the bar blur: the static image and/or the dynamic
             // WebView. Without it the progressive band has no texture to sample over a dynamic
-            // wallpaper, and the bars lose their tint instead of frosting the video.
+            // wallpaper, and the bars lose their tint instead of frosting the video. The glass
+            // top-bar style does not force this: its frost follows the blur switches.
             val captureAppBackground = (uiState.customBackgroundUri.isNotEmpty() || hasDynamicWallpaper) &&
                 ((uiMode == UiMode.Miuix && uiState.enableBlur) || progressiveBlurActive)
             val effectiveBackgroundPath = uiState.customBackgroundUri.ifEmpty {
@@ -302,6 +305,7 @@ class MainActivity : ComponentActivity() {
                 LocalEnableProgressiveBlur provides uiState.enableProgressiveBlur,
                 LocalEnableFloatingBottomBar provides uiState.enableFloatingBottomBar,
                 LocalEnableFloatingBottomBarBlur provides uiState.enableFloatingBottomBarBlur,
+                LocalTopBarStyle provides TopBarStyle.fromValue(uiState.topBarStyle),
                 LocalEnableNavigationBadge provides uiState.enableNavigationBadge,
                 LocalModuleDescriptionMaxLines provides uiState.moduleDescriptionMaxLines,
                 LocalBackgroundImagePath provides effectiveBackgroundPath,

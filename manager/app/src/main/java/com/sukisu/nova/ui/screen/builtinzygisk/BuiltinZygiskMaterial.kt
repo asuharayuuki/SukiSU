@@ -1,5 +1,7 @@
 package com.sukisu.nova.ui.screen.builtinzygisk
 
+import com.sukisu.nova.ui.component.material.LargeFlexibleTopAppBar
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background

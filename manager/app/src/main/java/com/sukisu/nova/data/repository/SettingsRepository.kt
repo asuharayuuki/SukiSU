@@ -50,6 +50,7 @@ interface SettingsRepository {
     var homeCardSectionExpanded: Boolean
     var colorsSectionExpanded: Boolean
     var bottomBarSectionExpanded: Boolean
+    var topBarSectionExpanded: Boolean
     var interactionSectionExpanded: Boolean
     var detailsSectionExpanded: Boolean
     var customHomeTitle: String
@@ -131,6 +132,8 @@ interface SettingsRepository {
     var enableProgressiveBlur: Boolean
     var enableFloatingBottomBar: Boolean
     var enableFloatingBottomBarBlur: Boolean
+    /** [com.sukisu.nova.ui.theme.TopBarStyle] value: standard, floating or floating glass. */
+    var topBarStyle: Int
     var enableNavigationBadge: Boolean
     var navigationRailExpanded: Boolean
     var pageScale: Float

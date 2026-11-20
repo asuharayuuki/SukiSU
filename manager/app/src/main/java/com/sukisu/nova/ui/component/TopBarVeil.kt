@@ -10,6 +10,10 @@ import androidx.compose.ui.graphics.Color
 import com.sukisu.nova.ui.theme.LocalBackgroundImagePath
 import com.sukisu.nova.ui.theme.LocalCardBackgroundAlpha
 import com.sukisu.nova.ui.theme.LocalEnableProgressiveBlur
+import com.sukisu.nova.ui.theme.LocalTopBarStyle
+import com.sukisu.nova.ui.util.BarBlurRadius
+import com.sukisu.nova.ui.util.FloatingBarBlurRadius
+import com.sukisu.nova.ui.util.GlassBarBlurRadius
 import com.sukisu.nova.ui.util.OpaqueBarTintAlpha
 import com.sukisu.nova.ui.util.rememberProgressiveBarBlurModifier
 import top.yukonga.miuix.kmp.blur.Backdrop
@@ -33,29 +37,44 @@ fun TopBarVeil(
     content: @Composable () -> Unit,
 ) {
     val hasCustomBackground = LocalBackgroundImagePath.current.isNotEmpty()
-    val progressiveBlur = LocalEnableProgressiveBlur.current && isRuntimeShaderSupported()
+    val topBarStyle = LocalTopBarStyle.current
+    val floating = topBarStyle.isFloating
+    // The glass style is only a translucent chrome treatment; the frost follows the progressive
+    // blur switch instead of being forced on, so the switch stays meaningful in every style.
+    val blurActive = LocalEnableProgressiveBlur.current && isRuntimeShaderSupported()
+    val baseTintAlpha = when {
+        floating && hasCustomBackground ->
+            (LocalCardBackgroundAlpha.current * 0.6f).coerceIn(0.22f, 0.5f)
+
+        floating -> 0.16f
+        hasCustomBackground -> LocalCardBackgroundAlpha.current
+        else -> OpaqueBarTintAlpha
+    }
+    // Glass has to stay visually distinct from plain floating even when both are blurred: it
+    // keeps a softer frost with much less tint, so the content behind reads through the band.
+    val tintAlpha = if (topBarStyle.isGlass) baseTintAlpha * 0.55f else baseTintAlpha
+    val blurRadius = when {
+        topBarStyle.isGlass -> GlassBarBlurRadius
+        floating -> FloatingBarBlurRadius
+        else -> BarBlurRadius
+    }
     // Keep a single Box across modes so enabling the setting does not recreate the top bar's
     // composition (and its scroll state) while the switch is being flipped.
     val modifier = when {
-        progressiveBlur && blurBackdrop != null -> rememberProgressiveBarBlurModifier(
+        blurActive && blurBackdrop != null -> rememberProgressiveBarBlurModifier(
             backdrop = blurBackdrop,
             gradient = ProgressiveBlur.Top,
             tint = color,
-            tintAlpha = if (hasCustomBackground) {
-                LocalCardBackgroundAlpha.current
-            } else {
-                OpaqueBarTintAlpha
-            },
+            tintAlpha = tintAlpha,
+            blurRadius = blurRadius,
         )
-
-        progressiveBlur -> Modifier
 
         hasCustomBackground -> Modifier
             .fillMaxWidth()
             .background(
                 Brush.verticalGradient(
-                    0f to color.copy(alpha = 0.28f),
-                    0.65f to color.copy(alpha = 0.12f),
+                    0f to color.copy(alpha = if (floating) 0.22f else 0.28f),
+                    0.65f to color.copy(alpha = if (floating) 0.08f else 0.12f),
                     1f to color.copy(alpha = 0f),
                 )
             )

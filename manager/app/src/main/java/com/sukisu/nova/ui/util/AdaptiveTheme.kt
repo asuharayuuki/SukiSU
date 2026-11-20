@@ -206,6 +206,7 @@ object AdaptiveThemeStore {
                 ?.let { repo.uiMode = it }
             data.enableFloatingBottomBar?.let { repo.enableFloatingBottomBar = it }
             data.enableFloatingBottomBarBlur?.let { repo.enableFloatingBottomBarBlur = it }
+            data.topBarStyle?.let { repo.topBarStyle = it.coerceIn(0, 2) }
             data.enableNavigationBadge?.let { repo.enableNavigationBadge = it }
             data.enablePredictiveBack?.let { repo.enablePredictiveBack = it }
             data.enableSwipeDismiss?.let { repo.enableSwipeDismiss = it }

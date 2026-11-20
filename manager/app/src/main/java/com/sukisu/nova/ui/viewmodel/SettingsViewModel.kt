@@ -98,8 +98,10 @@ class SettingsViewModel(
         homeCardSectionExpanded = repo.homeCardSectionExpanded,
         colorsSectionExpanded = repo.colorsSectionExpanded,
         bottomBarSectionExpanded = repo.bottomBarSectionExpanded,
+        topBarSectionExpanded = repo.topBarSectionExpanded,
         interactionSectionExpanded = repo.interactionSectionExpanded,
         detailsSectionExpanded = repo.detailsSectionExpanded,
+        topBarStyle = repo.topBarStyle,
         customHomeTitle = repo.customHomeTitle,
         customTexts = repo.customTexts,
         themeStoreBaseUrl = repo.themeStoreBaseUrl,
@@ -184,6 +186,7 @@ class SettingsViewModel(
             val enableProgressiveBlur = repo.enableProgressiveBlur
             val enableFloatingBottomBar = repo.enableFloatingBottomBar
             val enableFloatingBottomBarBlur = repo.enableFloatingBottomBarBlur
+            val topBarStyle = repo.topBarStyle
             val enableNavigationBadge = repo.enableNavigationBadge
             val pageScale = repo.pageScale
             val bottomBarIcons = repo.bottomBarIcons
@@ -275,6 +278,7 @@ class SettingsViewModel(
                     homeCardSectionExpanded = repo.homeCardSectionExpanded,
                     colorsSectionExpanded = repo.colorsSectionExpanded,
                     bottomBarSectionExpanded = repo.bottomBarSectionExpanded,
+                    topBarSectionExpanded = repo.topBarSectionExpanded,
                     interactionSectionExpanded = repo.interactionSectionExpanded,
                     detailsSectionExpanded = repo.detailsSectionExpanded,
                     customHomeTitle = repo.customHomeTitle,
@@ -310,6 +314,7 @@ homePillScale = HomeStatusStyle.coercePillScale(repo.homePillScale),
                     enableProgressiveBlur = enableProgressiveBlur,
                     enableFloatingBottomBar = enableFloatingBottomBar,
                     enableFloatingBottomBarBlur = enableFloatingBottomBarBlur,
+                    topBarStyle = topBarStyle,
                     enableNavigationBadge = enableNavigationBadge,
                     pageScale = pageScale,
                     moduleDescriptionMaxLines = moduleDescriptionMaxLines,
@@ -1267,6 +1272,7 @@ homeStatusAlignment = HomeStatusAlignment.fromValue(repo.homeStatusAlignment).va
             enableProgressiveBlur = repo.enableProgressiveBlur.takeIf { options.interfaceSwitches },
             enableFloatingBottomBar = repo.enableFloatingBottomBar.takeIf { options.interfaceSwitches },
             enableFloatingBottomBarBlur = repo.enableFloatingBottomBarBlur.takeIf { options.interfaceSwitches },
+            topBarStyle = repo.topBarStyle.takeIf { options.interfaceSwitches },
             enableNavigationBadge = repo.enableNavigationBadge.takeIf { options.interfaceSwitches },
             enablePredictiveBack = repo.enablePredictiveBack.takeIf { options.interactionBehavior },
             enableSwipeDismiss = repo.enableSwipeDismiss.takeIf { options.interactionBehavior },
@@ -1433,6 +1439,7 @@ homePillScale = if (options.homeCardDisplay) source.homePillScale else null,
             } else {
                 null
             },
+            topBarStyle = if (options.interfaceSwitches) repo.topBarStyle else null,
             enableNavigationBadge = if (options.interfaceSwitches) {
                 repo.enableNavigationBadge
             } else {
@@ -1805,12 +1812,14 @@ homePillScale = if (options.homeCardDisplay) source.homePillScale else null,
             repo.enableProgressiveBlur = false
             repo.enableFloatingBottomBar = false
             repo.enableFloatingBottomBarBlur = false
+            repo.topBarStyle = 0
             repo.enableNavigationBadge = true
             updated = updated.copy(
                 enableBlur = false,
                 enableProgressiveBlur = false,
                 enableFloatingBottomBar = false,
                 enableFloatingBottomBarBlur = false,
+                topBarStyle = 0,
                 enableNavigationBadge = true,
             )
         }
@@ -1884,6 +1893,7 @@ homePillScale = if (options.homeCardDisplay) source.homePillScale else null,
                 uiMode = null,
                 enableFloatingBottomBar = null,
                 enableFloatingBottomBarBlur = null,
+                topBarStyle = null,
                 enableNavigationBadge = null,
                 enablePredictiveBack = null,
                 enableSwipeDismiss = null,
@@ -1986,6 +1996,7 @@ homePillScale = if (options.homeCardDisplay) source.homePillScale else null,
 
         var floatingBottomBar = current.enableFloatingBottomBar
         var floatingBottomBarBlur = current.enableFloatingBottomBarBlur
+        var topBarStyle = current.topBarStyle
         var navigationBadge = current.enableNavigationBadge
         var predictiveBack = repo.enablePredictiveBack
         var swipeDismiss = repo.enableSwipeDismiss
@@ -2006,9 +2017,11 @@ homePillScale = if (options.homeCardDisplay) source.homePillScale else null,
             }
             floatingBottomBar = data.enableFloatingBottomBar ?: current.enableFloatingBottomBar
             floatingBottomBarBlur = data.enableFloatingBottomBarBlur ?: current.enableFloatingBottomBarBlur
+            topBarStyle = data.topBarStyle?.coerceIn(0, 2) ?: current.topBarStyle
             navigationBadge = data.enableNavigationBadge ?: current.enableNavigationBadge
             repo.enableFloatingBottomBar = floatingBottomBar
             repo.enableFloatingBottomBarBlur = floatingBottomBarBlur
+            repo.topBarStyle = topBarStyle
             repo.enableNavigationBadge = navigationBadge
         }
 
@@ -2287,6 +2300,7 @@ homePillScale = if (options.homeCardDisplay) source.homePillScale else null,
             dynamicHomeCardPath = repo.dynamicHomeCardPath
             floatingBottomBar = repo.enableFloatingBottomBar
             floatingBottomBarBlur = repo.enableFloatingBottomBarBlur
+            topBarStyle = repo.topBarStyle
             navigationBadge = repo.enableNavigationBadge
             predictiveBack = repo.enablePredictiveBack
             swipeDismiss = repo.enableSwipeDismiss
@@ -2357,6 +2371,7 @@ homePillScale = HomeStatusStyle.coercePillScale(repo.homePillScale),
                 systemWallpaperPath = if (replacingBackground) "" else current.systemWallpaperPath,
                 enableFloatingBottomBar = floatingBottomBar,
                 enableFloatingBottomBarBlur = floatingBottomBarBlur,
+                topBarStyle = topBarStyle,
                 enableNavigationBadge = navigationBadge,
                 enablePredictiveBack = predictiveBack,
                 enableSwipeDismiss = swipeDismiss,
@@ -2532,6 +2547,7 @@ homePillScale = if (options.homeCardDisplay) variant.data.homePillScale else nul
                 } else {
                     null
                 },
+                topBarStyle = if (options.interfaceSwitches) variant.data.topBarStyle else null,
                 enableNavigationBadge = if (options.interfaceSwitches) {
                     variant.data.enableNavigationBadge
                 } else {
@@ -2623,6 +2639,7 @@ homePillScale = if (options.homeCardDisplay) variant.data.homePillScale else nul
                     homeCardStickers = repo.homeCardStickers,
                     enableFloatingBottomBar = repo.enableFloatingBottomBar,
                     enableFloatingBottomBarBlur = repo.enableFloatingBottomBarBlur,
+                    topBarStyle = repo.topBarStyle,
                     enableNavigationBadge = repo.enableNavigationBadge,
                     enablePredictiveBack = repo.enablePredictiveBack,
                     enableSwipeDismiss = repo.enableSwipeDismiss,
@@ -3022,6 +3039,7 @@ homePillScale = repo.homePillScale,
                     uiMode = repo.uiMode,
                     enableFloatingBottomBar = repo.enableFloatingBottomBar,
                     enableFloatingBottomBarBlur = repo.enableFloatingBottomBarBlur,
+                    topBarStyle = repo.topBarStyle,
                     enableNavigationBadge = repo.enableNavigationBadge,
                     enablePredictiveBack = repo.enablePredictiveBack,
                     enableSwipeDismiss = repo.enableSwipeDismiss,
@@ -3291,6 +3309,11 @@ homePillScale = repo.homePillScale,
         _uiState.update { it.copy(bottomBarSectionExpanded = expanded) }
     }
 
+    fun setTopBarSectionExpanded(expanded: Boolean) {
+        repo.topBarSectionExpanded = expanded
+        _uiState.update { it.copy(topBarSectionExpanded = expanded) }
+    }
+
     fun setInteractionSectionExpanded(expanded: Boolean) {
         repo.interactionSectionExpanded = expanded
         _uiState.update { it.copy(interactionSectionExpanded = expanded) }
@@ -3481,6 +3504,12 @@ homePillScale = repo.homePillScale,
     fun setEnableFloatingBottomBarBlur(enabled: Boolean) {
         repo.enableFloatingBottomBarBlur = enabled
         _uiState.update { it.copy(enableFloatingBottomBarBlur = enabled) }
+    }
+
+    fun setTopBarStyle(style: Int) {
+        val coerced = style.coerceIn(0, 2)
+        repo.topBarStyle = coerced
+        _uiState.update { it.copy(topBarStyle = coerced) }
     }
 
     fun setEnableNavigationBadge(enabled: Boolean) {
@@ -3728,6 +3757,7 @@ homePillScale = repo.homePillScale,
             enableProgressiveBlur = enableProgressiveBlur,
             enableFloatingBottomBar = enableFloatingBottomBar,
             enableFloatingBottomBarBlur = enableFloatingBottomBarBlur,
+            topBarStyle = topBarStyle,
             enableNavigationBadge = enableNavigationBadge,
             pageScale = pageScale,
             customHomeTitle = customHomeTitle,
@@ -3759,6 +3789,7 @@ homePillScale = repo.homePillScale,
             homeCardSectionExpanded = homeCardSectionExpanded,
             colorsSectionExpanded = colorsSectionExpanded,
             bottomBarSectionExpanded = bottomBarSectionExpanded,
+            topBarSectionExpanded = topBarSectionExpanded,
             interactionSectionExpanded = interactionSectionExpanded,
             detailsSectionExpanded = detailsSectionExpanded,
             showFullStatus = showFullStatus,

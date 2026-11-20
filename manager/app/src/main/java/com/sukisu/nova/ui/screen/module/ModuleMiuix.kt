@@ -151,7 +151,7 @@ import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.basic.TopAppBar
+import com.sukisu.nova.ui.component.miuix.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -273,6 +273,9 @@ fun ModulePagerMiuix(
 
     AppScaffold(
         containerColor = if (hasCustomBackground) Color.Transparent else colorScheme.surface,
+        // The expanded search pager already paints its own scrim; hiding the bar keeps its
+        // surface and blur band from showing through the scrim as a dark rectangle.
+        topBarVisible = searchStatus.isCollapsed(),
         topBar = {
             BlurredBar(backdrop = backdrop, scrollBehavior = scrollBehavior) {
                 searchStatus.TopAppBarAnim(backgroundColor = barColor) {

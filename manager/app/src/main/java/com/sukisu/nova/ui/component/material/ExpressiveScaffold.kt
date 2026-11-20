@@ -64,13 +64,16 @@ fun ExpressiveScaffold(
         }
         drawContent()
     }
+    // Only the progressive blur switch asks for the band; the glass top-bar style no longer
+    // forces it on, so turning the switch off really turns the frost off.
+    val barBackdropActive = progressiveBlur
     Scaffold(
         modifier = modifier,
         topBar = {
             TopBarVeil(
                 // MD3E app bars sit on surfaceContainer; the progressive tint follows the bar.
                 color = MaterialTheme.colorScheme.surfaceContainer,
-                blurBackdrop = if (progressiveBlur) contentBackdrop else null,
+                blurBackdrop = contentBackdrop.takeIf { barBackdropActive },
             ) {
                 topBar()
             }
@@ -88,7 +91,13 @@ fun ExpressiveScaffold(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .then(if (progressiveBlur) Modifier.layerBackdrop(contentBackdrop) else Modifier)
+                .then(
+                    if (barBackdropActive) {
+                        Modifier.layerBackdrop(contentBackdrop)
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
             content(paddingValues)
         }

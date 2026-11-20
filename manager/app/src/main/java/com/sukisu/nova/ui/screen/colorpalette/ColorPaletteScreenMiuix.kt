@@ -49,6 +49,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ChromeReaderMode
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.automirrored.rounded.MenuOpen
 import androidx.compose.material.icons.rounded.AspectRatio
@@ -155,7 +156,7 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import com.sukisu.nova.ui.theme.backgroundAwareCardColors
 import com.sukisu.nova.ui.theme.backgroundAwareColor
-import top.yukonga.miuix.kmp.basic.TopAppBar
+import com.sukisu.nova.ui.component.miuix.TopAppBar
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
@@ -1580,6 +1581,54 @@ fun ColorPaletteScreenMiuix(
                     }
                     }
 
+                    if (selectedCategory == ThemeSettingsCategory.TOP_BAR) {
+                    AppCard(
+                        modifier = Modifier
+                            .bringIntoViewRequester(sectionRequester("top_bar"))
+                            .fillMaxWidth(),
+                    ) {
+                        MiuixCategoryHeader(
+                            title = stringResource(selectedCategory.titleRes),
+                            summary = stringResource(selectedCategory.summaryRes),
+                            icon = Icons.AutoMirrored.Rounded.ChromeReaderMode,
+                            expanded = state.topBarSectionExpanded,
+                            onClick = {
+                                actions.onSetTopBarSectionExpanded(
+                                    !state.topBarSectionExpanded,
+                                )
+                            },
+                        )
+                        AnimatedVisibility(
+                            visible = true,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut(),
+                        ) {
+                            Column {
+                                HorizontalDivider()
+                                OverlayDropdownPreference(
+                                    title = stringResource(id = R.string.settings_top_bar_style),
+                                    summary = stringResource(id = R.string.settings_top_bar_style_summary),
+                                    items = listOf(
+                                        stringResource(id = R.string.settings_top_bar_style_standard),
+                                        stringResource(id = R.string.settings_top_bar_style_floating),
+                                        stringResource(id = R.string.settings_top_bar_style_floating_glass),
+                                    ),
+                                    startAction = {
+                                        Icon(
+                                            Icons.AutoMirrored.Rounded.ChromeReaderMode,
+                                            modifier = Modifier.padding(end = 6.dp),
+                                            contentDescription = stringResource(id = R.string.settings_top_bar_style),
+                                            tint = colorScheme.onBackground,
+                                        )
+                                    },
+                                    selectedIndex = state.topBarStyle.coerceIn(0, 2),
+                                    onSelectedIndexChange = actions.onSetTopBarStyle,
+                                )
+                            }
+                        }
+                    }
+                    }
+
                     if (selectedCategory == ThemeSettingsCategory.BOTTOM_BAR) {
                     AppCard(
                         modifier = Modifier
@@ -2289,7 +2338,7 @@ private fun MiuixCategoryGrid(
         insideMargin = PaddingValues(8.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            ThemeSettingsCategory.entries.chunked(4).forEach { row ->
+            ThemeSettingsCategory.entries.chunked(3).forEach { row ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
