@@ -26,12 +26,15 @@ powershell -ExecutionPolicy Bypass -File scripts/dev/setup-rust-build.ps1 aarch6
 
 | 文件 | 用途 | 运行位置 |
 | --- | --- | --- |
-| `seed-ci-tools.sh` | 把 `.github/scripts/ci/ci-checkout.sh` 安装到 `/ci/tools/bin/ci-checkout`。**每台 runner host 只需跑一次**，否则该 host 上所有 job 在第一步 Checkout 就失败 | WSL runner host |
-| `artifact-server.sh` | 用 Docker 把 `/ci/runs` 只读发布到 LAN:18080，供另一台 runner 跨主机取产物 | WSL runner host，**不在 job 内** |
+| `seed-ci-tools.sh` | 把 `.github/scripts/ci/ci-checkout.sh` 安装到 `/ci/tools/bin/ci-checkout`。漏跑时该 host 上**所有 job 在第一步 Checkout 就失败**（exit 127，2 秒收场） | runner host（Docker named volume 或 bind mount 都支持） |
+| `artifact-server.sh` | 用 Docker 把 `/ci/runs` 只读发布到 LAN:18080，供另一台 runner 跨主机取产物 | runner host，**不在 job 内** |
 | `prepare-ddk-x64.sh` | 为 8 个 KMI 生成 x86_64 的 DDK kdir，供 DDK 镜像与 LKM 构建使用 | `/opt/ddk` 所在的构建机 |
 
 ```bash
-# 换了 runner / 重装了 host 之后，务必先跑这个再推送
+# Docker 部署（本仓库就是这种：forgejo-ci 是 named volume）
+CI_TOOLS_VOLUME=forgejo-ci bash scripts/host/seed-ci-tools.sh
+
+# runner 的 job 用 host 目录挂载时，直接跑即可
 bash scripts/host/seed-ci-tools.sh
 ```
 
