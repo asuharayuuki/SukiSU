@@ -7,9 +7,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import com.sukisu.nova.ui.theme.LocalBackgroundImagePath
 import com.sukisu.nova.ui.theme.LocalCardBackgroundAlpha
 import com.sukisu.nova.ui.theme.LocalEnableProgressiveBlur
+import com.sukisu.nova.ui.theme.LocalTopBarBandProgress
 import com.sukisu.nova.ui.theme.LocalTopBarStyle
 import com.sukisu.nova.ui.util.BarBlurRadius
 import com.sukisu.nova.ui.util.FloatingBarBlurRadius
@@ -24,8 +26,10 @@ import top.yukonga.miuix.kmp.shader.isRuntimeShaderSupported
  * The backdrop treatment behind a transparent top bar.
  *
  * With [LocalEnableProgressiveBlur] on, the bar draws a progressive blur band that is strongest
- * at the screen edge. [blurBackdrop] is the page capture supplied by the Material scaffold; the
- * Miuix shell passes nothing because its top bar already draws the band inside `BlurredBar`.
+ * at the screen edge; the band follows [LocalTopBarBandProgress] so it fades in while the page
+ * scrolls under the bar and fades out again at the top. [blurBackdrop] is the page capture
+ * supplied by the Material scaffold; the Miuix shell passes nothing because its top bar already
+ * draws the band inside `BlurredBar`.
  *
  * Otherwise this is a soft scrim while a custom background is active. It keeps the bar and its
  * icons readable without hiding the background image, and it works the same way in both shells.
@@ -58,18 +62,26 @@ fun TopBarVeil(
         floating -> FloatingBarBlurRadius
         else -> BarBlurRadius
     }
-    // Keep a single Box across modes so enabling the setting does not recreate the top bar's
-    // composition (and its scroll state) while the switch is being flipped.
-    val modifier = when {
-        blurActive && blurBackdrop != null -> rememberProgressiveBarBlurModifier(
+    // The large bars publish their collapse progress; reading it in the layer phase keeps the
+    // band fading per frame without recomposing the bar. Pinned bars never publish, so they keep
+    // the band fully visible.
+    val bandProgress = LocalTopBarBandProgress.current
+    val bandDrawn = blurActive && blurBackdrop != null
+    val bandModifier = if (bandDrawn) {
+        rememberProgressiveBarBlurModifier(
             backdrop = blurBackdrop,
             gradient = ProgressiveBlur.Top,
             tint = color,
             tintAlpha = tintAlpha,
             blurRadius = blurRadius,
         )
-
-        hasCustomBackground -> Modifier
+    } else {
+        Modifier
+    }
+    // Keep a single Box across modes so enabling the setting does not recreate the top bar's
+    // composition (and its scroll state) while the switch is being flipped.
+    val scrimModifier = if (hasCustomBackground && !bandDrawn) {
+        Modifier
             .fillMaxWidth()
             .background(
                 Brush.verticalGradient(
@@ -78,10 +90,21 @@ fun TopBarVeil(
                     1f to color.copy(alpha = 0f),
                 )
             )
-
-        else -> Modifier
+    } else {
+        Modifier
     }
-    Box(modifier = modifier) {
+    Box(modifier = scrimModifier) {
+        // Draw the band in its own full-size layer so the fade only affects the frost, never the
+        // bar content on top of it.
+        if (bandDrawn) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    // The layer must wrap the blur modifier (outermost) for the alpha to apply.
+                    .graphicsLayer { alpha = bandProgress.fraction.coerceIn(0f, 1f) }
+                    .then(bandModifier),
+            )
+        }
         content()
     }
 }

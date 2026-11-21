@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -16,6 +18,7 @@ import com.sukisu.nova.ui.component.floatingTopBarPillColor
 import com.sukisu.nova.ui.theme.LocalBackgroundImagePath
 import com.sukisu.nova.ui.theme.LocalEnableBlur
 import com.sukisu.nova.ui.theme.LocalEnableProgressiveBlur
+import com.sukisu.nova.ui.theme.LocalTopBarBandProgress
 import com.sukisu.nova.ui.theme.LocalTopBarStyle
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar as MiuixSmallTopAppBar
@@ -52,6 +55,17 @@ fun TopAppBar(
     actionIconPadding: Dp = TopAppBarDefaults.ActionIconPadding,
     bottomContent: @Composable () -> Unit = {},
 ) {
+    // Publish the collapse progress for the page's BlurredBar so its frost fades in while the
+    // content scrolls under the bar and fades out at the top, even on pages that do not pass
+    // their scroll behavior to BlurredBar themselves.
+    val bandProgress = LocalTopBarBandProgress.current
+    val bandState = scrollBehavior?.state
+    if (bandState != null) {
+        LaunchedEffect(bandState) {
+            snapshotFlow { bandState.collapsedFraction.coerceIn(0f, 1f) }
+                .collect { bandProgress.fraction = it }
+        }
+    }
     if (!LocalTopBarStyle.current.isFloating) {
         MiuixTopAppBar(
             title = title,

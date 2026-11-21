@@ -13,11 +13,15 @@ import androidx.compose.material3.TopAppBarColors
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.sukisu.nova.ui.component.TopBarVeil
 import com.sukisu.nova.ui.theme.LocalBackgroundImagePath
 import com.sukisu.nova.ui.theme.LocalEnableProgressiveBlur
+import com.sukisu.nova.ui.theme.LocalTopBarBandProgress
+import com.sukisu.nova.ui.theme.TopBarBandProgressState
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.shader.isRuntimeShaderSupported
@@ -67,39 +71,44 @@ fun ExpressiveScaffold(
     // Only the progressive blur switch asks for the band; the glass top-bar style no longer
     // forces it on, so turning the switch off really turns the frost off.
     val barBackdropActive = progressiveBlur
-    Scaffold(
-        modifier = modifier,
-        topBar = {
-            TopBarVeil(
-                // MD3E app bars sit on surfaceContainer; the progressive tint follows the bar.
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                blurBackdrop = contentBackdrop.takeIf { barBackdropActive },
+    // The large bars publish their collapse progress here; the veil fades its band out at rest
+    // and back in while content scrolls underneath.
+    val topBarBandProgress = remember { TopBarBandProgressState() }
+    CompositionLocalProvider(LocalTopBarBandProgress provides topBarBandProgress) {
+        Scaffold(
+            modifier = modifier,
+            topBar = {
+                TopBarVeil(
+                    // MD3E app bars sit on surfaceContainer; the progressive tint follows the bar.
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    blurBackdrop = contentBackdrop.takeIf { barBackdropActive },
+                ) {
+                    topBar()
+                }
+            },
+            bottomBar = bottomBar,
+            snackbarHost = snackbarHost,
+            floatingActionButton = floatingActionButton,
+            floatingActionButtonPosition = floatingActionButtonPosition,
+            containerColor = resolvedContainerColor,
+            contentColor = resolvedContentColor,
+            contentWindowInsets = contentWindowInsets,
+        ) { paddingValues ->
+            // Keep the wrapper in place in both modes: swapping the composition structure when the
+            // setting is flipped would recreate the page content and drop its remembered state.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (barBackdropActive) {
+                            Modifier.layerBackdrop(contentBackdrop)
+                        } else {
+                            Modifier
+                        }
+                    )
             ) {
-                topBar()
+                content(paddingValues)
             }
-        },
-        bottomBar = bottomBar,
-        snackbarHost = snackbarHost,
-        floatingActionButton = floatingActionButton,
-        floatingActionButtonPosition = floatingActionButtonPosition,
-        containerColor = resolvedContainerColor,
-        contentColor = resolvedContentColor,
-        contentWindowInsets = contentWindowInsets,
-    ) { paddingValues ->
-        // Keep the wrapper in place in both modes: swapping the composition structure when the
-        // setting is flipped would recreate the page content and drop its remembered state.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(
-                    if (barBackdropActive) {
-                        Modifier.layerBackdrop(contentBackdrop)
-                    } else {
-                        Modifier
-                    }
-                )
-        ) {
-            content(paddingValues)
         }
     }
 }

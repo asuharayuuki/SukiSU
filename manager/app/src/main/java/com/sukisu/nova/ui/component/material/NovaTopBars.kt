@@ -25,10 +25,12 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -46,6 +48,7 @@ import com.sukisu.nova.ui.component.FloatingTopBarPill
 import com.sukisu.nova.ui.component.floatingTopBarPillColor
 import com.sukisu.nova.ui.theme.LocalBackgroundImagePath
 import com.sukisu.nova.ui.theme.LocalEnableProgressiveBlur
+import com.sukisu.nova.ui.theme.LocalTopBarBandProgress
 import com.sukisu.nova.ui.theme.LocalTopBarStyle
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.shader.isRuntimeShaderSupported
@@ -170,6 +173,15 @@ fun LargeFlexibleTopAppBar(
     scrollBehavior: TopAppBarScrollBehavior? = null,
 ) {
     if (!LocalTopBarStyle.current.isFloating) {
+        // Feed the collapse progress to the scaffold's veil so the blur band fades with the bar.
+        val bandProgress = LocalTopBarBandProgress.current
+        val bandState = scrollBehavior?.state
+        if (bandState != null) {
+            LaunchedEffect(bandState) {
+                snapshotFlow { bandState.collapsedFraction.coerceIn(0f, 1f) }
+                    .collect { bandProgress.fraction = it }
+            }
+        }
         MaterialLargeFlexibleTopAppBar(
             title = title,
             modifier = modifier,
@@ -333,6 +345,16 @@ private fun FloatingMaterialLargeTopAppBar(
             } else {
                 true
             }
+        }
+    }
+    // Publish the collapse progress for the scaffold veil: the frosted band fades in while content
+    // scrolls under the bar and fades out again when the list returns to the top.
+    val bandProgress = LocalTopBarBandProgress.current
+    LaunchedEffect(state) {
+        if (state == null) {
+            bandProgress.fraction = 1f
+        } else {
+            snapshotFlow { fractionProvider() }.collect { bandProgress.fraction = it }
         }
     }
     // The custom layout below draws the collapse from the shared state, so it also owns the

@@ -3,6 +3,10 @@ package com.sukisu.nova.ui.theme
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import com.materialkolor.PaletteStyle
 import com.materialkolor.dynamiccolor.ColorSpec
@@ -150,6 +154,21 @@ val LocalEnableBlur = staticCompositionLocalOf { false }
 
 /** Progressive (edge gradient) blur behind the top and bottom bars. */
 val LocalEnableProgressiveBlur = staticCompositionLocalOf { false }
+
+/**
+ * Collapse progress of the page's top bar (0 = expanded, 1 = collapsed).
+ *
+ * Large app bars publish their progress here while scrolling, and `TopBarVeil` reads it in the
+ * draw phase so its blur band fades in as content scrolls under the bar and fades out again when
+ * the list returns to the top. Bars that never publish (pinned or non-scrolling) keep the band
+ * fully visible, matching the previous look.
+ */
+@Stable
+class TopBarBandProgressState {
+    var fraction by mutableFloatStateOf(1f)
+}
+
+val LocalTopBarBandProgress = staticCompositionLocalOf { TopBarBandProgressState() }
 
 val LocalEnableFloatingBottomBar = staticCompositionLocalOf { false }
 

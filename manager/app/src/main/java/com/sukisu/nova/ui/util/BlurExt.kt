@@ -11,11 +11,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import com.sukisu.nova.ui.component.liquid.rememberCombinedBackdrop
 import com.sukisu.nova.ui.theme.LocalAppBackgroundBackdrop
 import com.sukisu.nova.ui.theme.LocalBackgroundImagePath
 import com.sukisu.nova.ui.theme.LocalCardBackgroundAlpha
 import com.sukisu.nova.ui.theme.LocalEnableProgressiveBlur
+import com.sukisu.nova.ui.theme.LocalTopBarBandProgress
 import com.sukisu.nova.ui.theme.LocalTopBarStyle
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.blur.Backdrop
@@ -180,9 +182,8 @@ fun BlurredBar(
 
     val blurModifier = when {
         progressiveBlur && blurBackdrop != null -> {
-            // Always active: over a custom background the wallpaper edge should be frosted even
-            // before the page is scrolled, and without one the flat surface keeps the band
-            // invisible at rest.
+            // The gradient itself is always installed; the band's alpha follows the collapse so
+            // it is invisible at rest and fades in as content scrolls underneath.
             rememberProgressiveBarBlurModifier(
                 backdrop = backdrop,
                 gradient = progressiveGradient,
@@ -219,9 +220,33 @@ fun BlurredBar(
         else -> Modifier
     }
 
-    Box(
-        modifier = modifier.then(blurModifier)
-    ) {
+    // Fade the frost with the collapse so the band appears while content scrolls under the bar
+    // and fades out again when the list returns to the top. The no-blur scrim branches stay
+    // constant so the floating chrome remains readable at rest.
+    val bandVisible = progressiveBlur || (blurBackdrop != null && effectiveBlurActive)
+    // Pages that do not pass their scroll behavior here still publish the bar's collapse through
+    // LocalTopBarBandProgress, so the band fades everywhere a large bar is collapsing.
+    val bandProgress = LocalTopBarBandProgress.current
+    val bandAlpha: () -> Float = remember(scrollBehavior, bandProgress) {
+        {
+            val state = scrollBehavior?.state
+            when {
+                state == null -> bandProgress.fraction.coerceIn(0f, 1f)
+                state.heightOffsetLimit == 0f -> 1f
+                else -> (state.collapsedFraction * 3f).coerceIn(0f, 1f)
+            }
+        }
+    }
+    Box(modifier = modifier) {
+        // Separate full-size layer: the fade must only affect the band, never the bar content on
+        // top of it.
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                // The layer must wrap the blur modifier (outermost) for the alpha to apply.
+                .graphicsLayer { alpha = if (bandVisible) bandAlpha() else 1f }
+                .then(blurModifier),
+        )
         content()
     }
 }
