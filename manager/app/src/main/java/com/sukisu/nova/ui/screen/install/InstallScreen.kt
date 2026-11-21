@@ -17,8 +17,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.dropUnlessResumed
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.sukisu.nova.R
 import com.sukisu.nova.getKernelVersion
 import com.sukisu.nova.ui.LocalUiMode
@@ -106,11 +108,22 @@ fun InstallScreen(
         }
     }
 
-    // Read the configuration from the boot image ksu_config
     val bootConfig by produceState(initialValue = BootConfig()) { value = getBootConfig() }
     var spoofEnabled by rememberSaveable { mutableStateOf(false) }
-    var spoofRelease by rememberSaveable { mutableStateOf(SuSFSManager.getKernelSpoofRelease()) }
-    var spoofVersion by rememberSaveable { mutableStateOf(SuSFSManager.getKernelSpoofVersion()) }
+    var spoofRelease by rememberSaveable { mutableStateOf("") }
+    var spoofVersion by rememberSaveable { mutableStateOf("") }
+    var spoofPrefilled by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        if (!spoofPrefilled) {
+            spoofPrefilled = true
+            val (release, version) = withContext(Dispatchers.IO) {
+                SuSFSManager.getKernelSpoofRelease() to SuSFSManager.getKernelSpoofVersion()
+            }
+            if (spoofRelease.isEmpty()) spoofRelease = release
+            if (spoofVersion.isEmpty()) spoofVersion = version
+        }
+    }
 
     val effectiveSpoofRelease = if (spoofEnabled) spoofRelease else ""
     val effectiveSpoofVersion = if (spoofEnabled) spoofVersion else ""
