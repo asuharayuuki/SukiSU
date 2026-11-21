@@ -274,7 +274,14 @@ class MainActivity : ComponentActivity() {
             // WebView. Without it the progressive band has no texture to sample over a dynamic
             // wallpaper, and the bars lose their tint instead of frosting the video. The glass
             // top-bar style does not force this: its frost follows the blur switches.
-            val captureAppBackground = (uiState.customBackgroundUri.isNotEmpty() || hasDynamicWallpaper) &&
+            //
+            // Do not hand a live WebView to the progressive-blur runtime shader: some vendor
+            // WebViews (MIUI/HyperOS) crash while their surface is sampled, before the first
+            // frame, which restarts the app in a loop because the setting is persisted. Keep the
+            // plain bar blur sampling the video; the progressive path falls back to its tint.
+            val progressiveDynamicUnsafe = hasDynamicWallpaper && progressiveBlurActive
+            val captureAppBackground = !progressiveDynamicUnsafe &&
+                (uiState.customBackgroundUri.isNotEmpty() || hasDynamicWallpaper) &&
                 ((uiMode == UiMode.Miuix && uiState.enableBlur) || progressiveBlurActive)
             val effectiveBackgroundPath = uiState.customBackgroundUri.ifEmpty {
                 uiState.dynamicWallpaperPath

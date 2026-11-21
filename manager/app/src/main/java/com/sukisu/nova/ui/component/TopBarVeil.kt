@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import com.sukisu.nova.ui.theme.LocalAppBackgroundBackdrop
 import com.sukisu.nova.ui.theme.LocalBackgroundImagePath
 import com.sukisu.nova.ui.theme.LocalCardBackgroundAlpha
 import com.sukisu.nova.ui.theme.LocalEnableProgressiveBlur
@@ -66,7 +67,12 @@ fun TopBarVeil(
     // band fading per frame without recomposing the bar. Pinned bars never publish, so they keep
     // the band fully visible.
     val bandProgress = LocalTopBarBandProgress.current
-    val bandDrawn = blurActive && blurBackdrop != null
+    // A custom background needs the wallpaper layer to make the band sampleable. When it is
+    // missing (for example progressive blur was deliberately disabled over a dynamic WebView),
+    // fall back to the scrim instead of leaving the bar transparent.
+    val wallpaperSampleable = LocalAppBackgroundBackdrop.current != null ||
+        !hasCustomBackground
+    val bandDrawn = blurActive && blurBackdrop != null && wallpaperSampleable
     val bandModifier = if (bandDrawn) {
         rememberProgressiveBarBlurModifier(
             backdrop = blurBackdrop,
