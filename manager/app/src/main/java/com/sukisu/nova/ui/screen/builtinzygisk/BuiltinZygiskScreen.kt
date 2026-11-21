@@ -13,6 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -23,11 +24,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.dropUnlessResumed
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sukisu.nova.R
+import com.sukisu.nova.ksuApp
 import com.sukisu.nova.ui.LocalUiMode
 import com.sukisu.nova.ui.UiMode
 import com.sukisu.nova.ui.component.rebootlistpopup.rememberRebootAction
 import com.sukisu.nova.ui.component.rebootlistpopup.rememberRebootChoices
 import com.sukisu.nova.ui.navigation3.LocalNavigator
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text as MiuixText
 import top.yukonga.miuix.kmp.basic.TextButton as MiuixTextButton
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
@@ -38,6 +41,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles as miuixTextStyles
 fun BuiltinZygiskScreen() {
     val context = LocalContext.current
     val navigator = LocalNavigator.current
+    val scope = rememberCoroutineScope()
     val viewModel: BuiltinZygiskViewModel = viewModel()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     // The Home page's reboot action, so a late-load device still gets its warning prompt.
@@ -59,12 +63,11 @@ fun BuiltinZygiskScreen() {
         }
     }
     val onSwitch = { target: String, name: String ->
-        // Selecting a provider leaves this panel: ksud finishes the handover in the
-        // background while the user chooses how to restart.
         exitTarget = name
         viewModel.switchInBackground(target) { ok ->
             if (!ok) {
-                Toast.makeText(context, R.string.builtin_zygisk_switch_failed, Toast.LENGTH_SHORT).show()
+                exitTarget = null
+                Toast.makeText(ksuApp, R.string.builtin_zygisk_switch_failed, Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -80,7 +83,11 @@ fun BuiltinZygiskScreen() {
             name = name,
             onReboot = { reason ->
                 exitTarget = null
-                rebootAction(reason)
+                scope.launch {
+                    if (viewModel.awaitPendingSwitch()) {
+                        rebootAction(reason)
+                    }
+                }
             },
             onClose = {
                 exitTarget = null
