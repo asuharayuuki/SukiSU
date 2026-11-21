@@ -69,6 +69,10 @@ jobs:
     steps:
 
       - name: Checkout
+        # The job defaults to ./manager, which does not exist before the clone:
+        # without this, act fails the step with "chdir to cwd ... no such file
+        # or directory" before the script runs.
+        working-directory: ${{ github.workspace }}
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: /ci/tools/bin/ci-checkout
