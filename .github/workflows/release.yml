@@ -256,6 +256,13 @@ jobs:
     needs: [assemble]
     runs-on: ubuntu-latest
     steps:
+      # The release step calls .github/scripts/ci/forgejo-release.sh, so this job
+      # needs the tree as well; it used to be one inline curl block.
+      - name: Checkout
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: /ci/tools/bin/ci-checkout
+
       # Nothing is uploaded here any more: the assets live on CNB, so this job
       # only points the Forgejo release page at them (the old step pushed 46
       # files through the tunnel and could take half an hour).
