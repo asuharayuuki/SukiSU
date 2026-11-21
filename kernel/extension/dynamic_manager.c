@@ -9,8 +9,14 @@
  * The two responsibilities share state: getting the sticky-state bit
  * reads dynamic_manager_enabled, and the io op forwards to the same
  * set/get code paths that manager UI used to call via KSU_IOCTL_MANAGER.
+ *
+ * Persistence is owned by userspace: ksud writes DYNAMIC_MANAGER_FILE and the
+ * kernel only reads it back on boot (early initcall, retried from
+ * on_post_fs_data once /data is mounted). The read runs on ksu_cred so it does
+ * not depend on which context happened to trigger the call.
  */
 #include <linux/ctype.h>
+#include <linux/cred.h>
 #include <linux/fs.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
@@ -89,6 +95,23 @@ static void clear_managers_locked(void)
 	dynamic_manager_count = 0;
 }
 
+static int dynamic_manager_read_exact(struct file *fp, void *buf, size_t len,
+				      loff_t *pos)
+{
+	size_t done = 0;
+
+	while (done < len) {
+		ssize_t n = kernel_read(fp, (char *)buf + done, len - done, pos);
+
+		if (n < 0)
+			return (int)n;
+		if (!n)
+			return -EIO;
+		done += n;
+	}
+	return 0;
+}
+
 bool ksu_manager_package_authorized(const char *package, uid_t uid)
 {
 	int index;
@@ -137,45 +160,81 @@ void ksu_dynamic_manager_load(void)
 {
 	struct dynamic_manager_state *state;
 	struct file *fp;
+	const struct cred *saved;
 	loff_t pos = 0;
-	ssize_t read;
 	unsigned int i;
+	int ret = 0;
 
 	state = kzalloc(sizeof(*state), GFP_KERNEL);
 	if (!state)
 		return;
+
+	mutex_lock(&dynamic_manager_update_lock);
+
+	saved = override_creds(ksu_cred);
 	fp = filp_open(DYNAMIC_MANAGER_FILE, O_RDONLY, 0);
-	if (IS_ERR(fp))
-		goto out;
-	read = kernel_read(fp, state, sizeof(*state), &pos);
-	filp_close(fp, NULL);
-	if (read != sizeof(*state) || state->magic != DYNAMIC_MANAGER_MAGIC ||
-		state->version != DYNAMIC_MANAGER_VERSION ||
-		state->count > KSU_MAX_DYNAMIC_MANAGERS || state->enabled > 1)
-		goto out;
+	revert_creds(saved);
+	if (IS_ERR(fp)) {
+		ret = PTR_ERR(fp);
+		/*
+		 * /data is not mounted yet when this runs from the early
+		 * initcall. Keep the current state untouched and let
+		 * on_post_fs_data() call us again. Log every case: a silent
+		 * -ENOENT here is indistinguishable from "load never ran".
+		 */
+		if (ret == -ENOENT)
+			pr_info("dynamic_manager: %s absent (%d)\n",
+				DYNAMIC_MANAGER_FILE, ret);
+		else
+			pr_err("dynamic_manager: cannot open %s: %d\n",
+			       DYNAMIC_MANAGER_FILE, ret);
+		goto out_unlock;
+	}
+
+	ret = dynamic_manager_read_exact(fp, state, sizeof(*state), &pos);
+	if (ret)
+		goto out_close;
+	if (state->magic != DYNAMIC_MANAGER_MAGIC ||
+	    state->version != DYNAMIC_MANAGER_VERSION || state->enabled > 1 ||
+	    state->count > KSU_MAX_DYNAMIC_MANAGERS) {
+		ret = -EINVAL;
+		goto out_close;
+	}
 
 	for (i = 0; i < state->count; ++i) {
 		const struct ksu_manager_entry *entry = &state->entries[i];
 
 		if (!entry->cert_size ||
 			entry->cert_size > DYNAMIC_MANAGER_MAX_CERT_SIZE ||
-			!package_valid(entry->package) || !hash_valid(entry->hash))
-			goto out;
+			!package_valid(entry->package) || !hash_valid(entry->hash)) {
+			ret = -EINVAL;
+			goto out_close;
+		}
 	}
+
+out_close:
+	filp_close(fp, NULL);
+	if (ret) {
+		pr_err("dynamic_manager: %s invalid (%d), discarding\n",
+		       DYNAMIC_MANAGER_FILE, ret);
+		write_lock(&dynamic_manager_lock);
+		WRITE_ONCE(dynamic_manager_enabled, false);
+		clear_managers_locked();
+		write_unlock(&dynamic_manager_lock);
+		goto out_unlock;
+	}
+
 	write_lock(&dynamic_manager_lock);
 	WRITE_ONCE(dynamic_manager_enabled, !!state->enabled);
 	dynamic_manager_count = state->count;
 	memcpy(dynamic_managers, state->entries, sizeof(dynamic_managers));
 	memset(dynamic_manager_verified, 0, sizeof(dynamic_manager_verified));
 	write_unlock(&dynamic_manager_lock);
-	goto free_state;
-out:
-	write_lock(&dynamic_manager_lock);
-	WRITE_ONCE(dynamic_manager_enabled, false);
-	dynamic_manager_count = 0;
-	clear_managers_locked();
-	write_unlock(&dynamic_manager_lock);
-free_state:
+	pr_info("dynamic_manager: loaded %u entr%s, enabled=%u\n", state->count,
+		state->count == 1 ? "y" : "ies", state->enabled);
+
+out_unlock:
+	mutex_unlock(&dynamic_manager_update_lock);
 	kfree(state);
 }
 
