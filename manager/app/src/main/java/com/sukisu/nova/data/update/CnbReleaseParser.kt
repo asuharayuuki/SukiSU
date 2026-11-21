@@ -22,8 +22,12 @@ data class SourceRelease(
 /**
  * CNB (cnb.cool) does not expose an anonymous release API: `api.cnb.cool`
  * requires an account token even for public repositories. The web front end
- * is public, though, and server-renders its release list into the Next.js
+ * is public, though, and server-renders release data into the Next.js
  * `__NEXT_DATA__` payload, so the manager reads that payload instead.
+ *
+ * The list page embeds at most ten releases, while the `/latest` and
+ * `/tag/<tag>` pages embed exactly the requested release. Both shapes are
+ * parsed here: the list keys are snake_case, the single-release keys camelCase.
  *
  * Update checks therefore depend on the page's data shape. Everything is
  * best-effort: when the payload cannot be found the source simply returns no
@@ -43,19 +47,29 @@ object CnbReleaseParser {
         val props = root.optJSONObject("props")
         val state = props?.optJSONObject("pageProps")?.optJSONObject("initialState")
             ?: props?.optJSONObject("initialState")
-        val releaseArray = state
-            ?.optJSONObject("slug")
-            ?.optJSONObject("repo")
-            ?.optJSONObject("releases")
-            ?.optJSONObject("list")
-            ?.optJSONObject("data")
-            ?.optJSONArray("releases")
             ?: return emptyList()
 
         val origin = baseUrl.trimEnd('/')
-        return (0 until releaseArray.length()).mapNotNull { index ->
-            releaseArray.optJSONObject(index)?.toSourceRelease(origin)
+        val releases = state.optJSONObject("slug")
+            ?.optJSONObject("repo")
+            ?.optJSONObject("releases")
+            ?: return emptyList()
+
+        val list = releases.optJSONObject("list")
+            ?.optJSONObject("data")
+            ?.optJSONArray("releases")
+        if (list != null && list.length() > 0) {
+            return (0 until list.length()).mapNotNull { index ->
+                list.optJSONObject(index)?.toSourceRelease(origin)
+            }
         }
+
+        // A `/latest` or `/tag/<tag>` page renders one release under `detail`
+        // instead of the paged list.
+        val detail = releases.optJSONObject("detail")
+            ?.optJSONObject("data")
+            ?.optJSONObject("release")
+        return listOfNotNull(detail?.toSourceRelease(origin, camelCase = true))
     }
 
     /**
@@ -83,8 +97,13 @@ object CnbReleaseParser {
             }
             ?: releases.firstOrNull()
 
-    private fun JSONObject.toSourceRelease(origin: String): SourceRelease? {
-        val tag = optString("tag_ref").removePrefix("refs/tags/")
+    /**
+     * The list page uses snake_case keys; a single-release page (`/latest`,
+     * `/tag/<tag>`) uses camelCase ones. Assets share the same keys in both.
+     */
+    private fun JSONObject.toSourceRelease(origin: String, camelCase: Boolean = false): SourceRelease? {
+        val tag = (if (camelCase) optString("tagRef") else optString("tag_ref"))
+            .removePrefix("refs/tags/")
         if (tag.isBlank()) return null
 
         val assetArray = optJSONArray("assets")
@@ -103,10 +122,10 @@ object CnbReleaseParser {
         return SourceRelease(
             tag = tag,
             changelog = optString("body"),
-            draft = optBoolean("is_draft"),
-            prerelease = optBoolean("is_prerelease"),
-            latest = optBoolean("is_latest"),
-            publishedAt = optString("published_at"),
+            draft = optBoolean(if (camelCase) "isDraft" else "is_draft"),
+            prerelease = optBoolean(if (camelCase) "isPrerelease" else "is_prerelease"),
+            latest = optBoolean(if (camelCase) "isLatest" else "is_latest"),
+            publishedAt = optString(if (camelCase) "publishedAt" else "published_at"),
             assets = assets,
         )
     }

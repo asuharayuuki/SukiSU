@@ -149,7 +149,8 @@ jobs:
 产物就留在 CNB 上，不再回传到 Forgejo：job summary 里的下载链接直接指
 `https://cnb.cool/<repo>/-/releases/download/ci-<run_id>/<name>.tar.gz`，
 `manager-ci`（main）/ `manager-dev`（dev）的 release body 也只是一张指向 CNB
-的链接表（assets 会被清空，避免留下过期 APK），分支各自发自己的 tag，互不覆盖。
+的链接表（每次构建删除重建，旧 APK 不会残留，`published_at` 也随之前进），
+分支各自发自己的 tag，互不覆盖。
 Forgejo 上只保留 release 的标题和正文（管理器要解析版本号）。
 
 约定：

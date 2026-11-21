@@ -16,6 +16,10 @@
 #   CNB_TARGET_COMMITISH     branch/commit for a new tag, default main
 #   CNB_ASSET_PREFIX         optional asset name prefix
 #   CNB_CLEAR_ASSETS         true/false, default true; false keeps existing assets
+#   CNB_RECREATE             true/false, default false; true deletes the release
+#                            first so a rolling channel gets a fresh
+#                            published_at instead of sinking down CNB's
+#                            first-page-only release list
 set -euo pipefail
 
 if [ -z "${CNB_TOKEN:-}" ]; then
@@ -41,6 +45,28 @@ test -d "$ASSETS" || { echo "asset directory missing: $ASSETS" >&2; exit 1; }
 
 BODY=""
 [ -n "$BODY_FILE" ] && [ -f "$BODY_FILE" ] && BODY="$(cat "$BODY_FILE")"
+
+# A rolling channel is recreated rather than patched: CNB keeps the original
+# published_at when a release is updated, and its release pages only embed the
+# newest ten, so an old release eventually stops being visible to the manager's
+# updater even though its assets are current.
+if [ "${CNB_RECREATE:-false}" = "true" ]; then
+  cnb_release_delete "$TAG"
+  # The release may leave its tag behind; a create needs a free tag name.
+  # Non-fatal: some tokens may allow attaching a release to an existing tag.
+  cnb_tag_delete "$TAG" || true
+  # Deletion is asynchronous; creating the release again while the old id is
+  # still resolvable would attach the assets to the deleted release.
+  tries=15
+  while [ -n "$(cnb_release_id "$TAG")" ]; do
+    tries=$((tries - 1))
+    [ "$tries" -gt 0 ] || {
+      echo "cnb: release ${TAG} still resolves after delete" >&2
+      exit 1
+    }
+    sleep 2
+  done
+fi
 
 release_id="$(cnb_release_ensure "$TAG" "$NAME" "$TARGET_COMMITISH" "$BODY" \
   "$PRERELEASE" "$MAKE_LATEST")"

@@ -15,6 +15,8 @@
 #   GET    /-/releases/tags/<tag>
 #   POST   /-/releases                          {tag_name,target_commitish,name,body,draft,prerelease,make_latest}
 #   PATCH  /-/releases/<id>                     {name,body,prerelease,make_latest}
+#   DELETE /-/releases/<id>
+#   DELETE /-/git/tags/<tag>
 #   GET    /-/releases/<id>                     -> .assets[]
 #   DELETE /-/releases/<id>/assets/<asset_id>
 #   POST   /-/releases/<id>/asset-upload-url    {asset_name,size,overwrite}
@@ -131,6 +133,43 @@ cnb_release_patch() {
 		return 1
 	}
 	rm -f "$out"
+}
+
+# cnb_release_delete TAG
+#   Deletes the release for TAG. Rolling channels use this instead of patching,
+#   because a release keeps the published_at it was created with: the manager
+#   reads CNB's release pages, which only embed the newest ten, so an
+#   ever-patched release slowly sinks out of view. Idempotent: a missing release
+#   is not an error.
+cnb_release_delete() {
+	local tag="$1" id code
+	id="$(cnb_release_id "$tag")"
+	[ -n "$id" ] || return 0
+	code="$(cnb_curl -o /dev/null -w '%{http_code}' \
+		-X DELETE "$(cnb_api_base)/-/releases/${id}" || true)"
+	case "$code" in
+	200 | 202 | 204 | 404) return 0 ;;
+	*)
+		echo "cnb: failed to delete release ${tag}: HTTP ${code}" >&2
+		return 1
+		;;
+	esac
+}
+
+# cnb_tag_delete TAG
+#   Removes the git tag. Deleting a release does not always remove its tag, and
+#   recreating a release needs a free tag name. A missing tag is not an error.
+cnb_tag_delete() {
+	local tag="$1" code
+	code="$(cnb_curl -o /dev/null -w '%{http_code}' \
+		-X DELETE "$(cnb_api_base)/-/git/tags/${tag}" || true)"
+	case "$code" in
+	200 | 202 | 204 | 404) return 0 ;;
+	*)
+		echo "cnb: failed to delete tag ${tag}: HTTP ${code}" >&2
+		return 1
+		;;
+	esac
 }
 
 # cnb_release_assets TAG

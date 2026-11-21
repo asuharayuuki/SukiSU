@@ -57,10 +57,20 @@ data class UpdateSourceConfig(
         UpdateSourcePlatform.GITEA_FORGEJO ->
             "$baseUrl/api/v1/repos/$owner/$repo/releases/$endpoint"
 
-        // CNB serves every release from one page and offers no anonymous
-        // JSON API; the parser splits the list locally.
-        UpdateSourcePlatform.CNB ->
-            "$baseUrl/$owner/$repo/-/releases"
+        // CNB offers no anonymous JSON API, so its web pages are read. The
+        // plain list only server-renders the first page (10 releases), which a
+        // busy artifact repository pushes the rolling tag and the newest stable
+        // release off; the `/latest` and `/tag/<tag>` pages embed the single
+        // release the caller asked for, so they are always used instead.
+        UpdateSourcePlatform.CNB -> when {
+            endpoint == UpdateSourceDefaults.STABLE_ENDPOINT ->
+                "$baseUrl/$owner/$repo/-/releases/latest"
+
+            endpoint.startsWith("tags/") ->
+                "$baseUrl/$owner/$repo/-/releases/tag/${endpoint.removePrefix("tags/")}"
+
+            else -> "$baseUrl/$owner/$repo/-/releases"
+        }
     }
 
     /** Repository metadata endpoint, used to probe a source without fetching releases. */

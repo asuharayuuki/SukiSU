@@ -173,6 +173,11 @@ jobs:
           CNB_BODY_FILE: cnb-notes.md
           CNB_PRERELEASE: "true"
           CNB_MAKE_LATEST: "false"
+          # Rolling channels are deleted and recreated every build: CNB keeps
+          # the original published_at on update, and its release pages embed
+          # only the newest ten, so an updated-in-place release would slowly be
+          # pushed off the page the manager's updater reads.
+          CNB_RECREATE: "true"
           CNB_TARGET_COMMITISH: ${{ vars.CNB_TARGET_COMMITISH || 'main' }}
         run: |
           set -eu

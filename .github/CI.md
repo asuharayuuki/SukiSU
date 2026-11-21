@@ -218,7 +218,10 @@ Rolling channels: main publishes `manager-ci` (the tag the manager's CI updater
 reads) and dev publishes `manager-dev`. Both are CNB prereleases, so a dev push
 never replaces the build main was tested with and neither enters the stable
 update channel; a dispatch from any other ref signs nothing and publishes
-nothing.
+nothing. Both are deleted and recreated on every build (`CNB_RECREATE=true`):
+CNB keeps the original `published_at` when a release is updated, and its release
+pages only embed the newest ten, so a patched-in-place release would eventually
+be pushed off the page the updater reads.
 
 CNB needs `CNB_TOKEN` (release read/write); `CNB_REPO` is an optional variable
 (default `shirkneko/sukisu-result`). Publishing back to Forgejo uses
