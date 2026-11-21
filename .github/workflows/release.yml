@@ -184,16 +184,39 @@ jobs:
           CNB_PRERELEASE: "false"
           CNB_MAKE_LATEST: "true"
           CNB_TARGET_COMMITISH: ${{ vars.CNB_TARGET_COMMITISH || 'main' }}
+          # Reads the description written on the release page before the tag
+          # was pushed, so CNB shows the same text.
+          API_TOKEN: ${{ secrets.RELEASE_API_TOKEN || vars.RELEASE_API_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           set -eu
+          # The description written on the release page is what people came to
+          # read, so it goes first and CI appends its own part below a separator.
+          manual=""
+          site="${FORGEJO_PUBLIC_URL:-https://git.zako.shirkneko.top:20004}"
+          api="${site}/api/v1/repos/${GITHUB_REPOSITORY}"
+          if curl -sS --connect-timeout 10 --max-time 30 -f \
+            -H "Authorization: token ${API_TOKEN}" \
+            "$api/releases/tags/${GITHUB_REF_NAME}" -o /tmp/rel.json 2>/dev/null; then
+            manual="$(jq -r '.body // ""' /tmp/rel.json)"
+            # Keep only the hand-written part: everything above the separator.
+            manual="${manual%%$'\n---\n'*}"
+            while [ -n "$manual" ] && [ "${manual%$'\n'}" != "$manual" ]; do
+              manual="${manual%$'\n'}"
+            done
+          fi
           {
+            if [ -n "$manual" ]; then
+              printf '%s\n\n---\n\n' "$manual"
+            fi
             echo "# ${GITHUB_REF_NAME}"
             echo
             echo "Release build for \`${GITHUB_SHA}\`."
             echo
-            echo "## Recent changes"
+            echo "## Latest commit"
             echo
-            git log -30 --format='- %s (`%h`)'
+            echo '```'
+            git log -1 --format='%B'
+            echo '```'
           } > release/notes.md
           bash .github/scripts/ci/cnb-upload.sh
 

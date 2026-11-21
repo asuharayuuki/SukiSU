@@ -43,6 +43,39 @@ release="$api/releases/tags/$tag"
 status="$(curl -sS --connect-timeout 10 --max-time 60 -o "$json" \
 	-w '%{http_code}' -H "$auth" "$release" || true)"
 echo "existing release: HTTP ${status}"
+
+# A rolling channel has to move its tag to this commit. Gitea applies
+# target_commitish only when a release is created, so patching an existing one
+# leaves the tag where it was and the page keeps showing an old commit. Drop the
+# release and its tag, then let the create path below build both again.
+if [ "${RELEASE_RECREATE:-false}" = "true" ]; then
+	if [ "$status" = "200" ]; then
+		net -f -X DELETE -H "$auth" "$api/releases/$(jq -r '.id' "$json")" >/dev/null || true
+	fi
+	code="$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "$auth" \
+		"$api/tags/${tag}" || true)"
+	case "$code" in
+	204 | 404) ;;
+	*) echo "warning: deleting tag ${tag} returned HTTP ${code}" >&2 ;;
+	esac
+	# The assets went with the release; forgetting them keeps the cleanup below
+	# from deleting ids that no longer exist.
+	echo '{}' >"$json"
+	status="404"
+fi
+
+# A hand-written description survives: CI keeps everything above the separator
+# and appends its own section. A recreated release has none, by design.
+if [ "$status" = "200" ] && [ -n "${RELEASE_BODY:-}" ]; then
+	existing="$(jq -r '.body // ""' "$json")"
+	manual="${existing%%$'\n---\n'*}"
+	# Trailing newlines would leave the separator two blank lines down.
+	while [ -n "$manual" ] && [ "${manual%$'\n'}" != "$manual" ]; do
+		manual="${manual%$'\n'}"
+	done
+	[ -n "$manual" ] && body="$(printf '%s\n\n---\n\n%s' "$manual" "$body")"
+fi
+
 if [ "$status" = "200" ]; then
 	id="$(jq -r '.id' "$json")"
 else

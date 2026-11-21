@@ -189,9 +189,14 @@ jobs:
             echo "- Branch: \`${GITHUB_REF_NAME}\`"
             echo "- Run: ${GITHUB_RUN_NUMBER:-unknown}"
             echo
-            echo "## Recent changes"
+            # Only the commit being published: the changelog is the release
+            # notes, and a rolling channel's value is "what is in this build",
+            # not a scrolling history that repeats itself every run.
+            echo "## Latest commit"
             echo
-            git log -20 --format='- %s (`%h`)'
+            echo '```'
+            git log -1 --format='%B'
+            echo '```'
           } > cnb-notes.md
           echo "uploading to CNB release ${tag}"
           bash .github/scripts/ci/cnb-upload.sh
@@ -227,6 +232,9 @@ jobs:
           CNB_WEB: ${{ vars.CNB_WEB || 'https://cnb.cool' }}
           RELEASE_TAG: ${{ steps.channel.outputs.tag }}
           RELEASE_TITLE: ${{ steps.channel.outputs.title }}
+          # Rolling channels recreate the release each time so its tag moves to
+          # this build's commit; a stable release keeps its existing tag.
+          RELEASE_RECREATE: "true"
         run: |
           set -eu
           src=apks/split
