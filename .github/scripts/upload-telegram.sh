@@ -118,9 +118,12 @@ send_with_retry() {
 
 if (( $# == 1 )); then
   echo "[+] Uploading 1 APK through Telegram Bot API"
+  # --form-string, not -F: the caption is multi-line, and curl reads whatever
+  # follows a newline inside a -F value as a file name to open, which fails the
+  # whole request with (26) Failed to open/read local data.
   run_curl \
     -F "document=@$1;type=application/vnd.android.package-archive" \
-    -F "caption=${caption}" \
+    --form-string "caption=${caption}" \
     -F "parse_mode=HTML" \
     "${api}/sendDocument"
 else
@@ -162,9 +165,10 @@ else
       else
         caption_arg=""
       fi
+      # Same reason as the single-file branch: the caption spans lines.
       send_with_retry \
         -F "document=@${file};type=application/vnd.android.package-archive" \
-        -F "caption=${caption_arg}" \
+        --form-string "caption=${caption_arg}" \
         -F "parse_mode=HTML" \
         "${api}/sendDocument"
     done
