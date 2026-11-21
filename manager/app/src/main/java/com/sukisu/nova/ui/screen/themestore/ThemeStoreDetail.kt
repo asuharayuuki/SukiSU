@@ -124,9 +124,15 @@ internal fun ThemeStoreDetailScreen(
     onToggleFollow: () -> Unit = {},
 ) {
     val entry = item.entry
-    val displayTags = remember(item.key, entry.tags, entry.r18) {
+    val displayTags = remember(item.key, entry.tags, entry.r18, entry.dynamic, entry.formatVersion) {
         val hasR18Tag = entry.tags.any { canonicalThemeTag(it) == R18_TAG }
-        if (item.isR18Theme() && !hasR18Tag) listOf(R18_TAG) + entry.tags else entry.tags
+        val hasDynamicTag = entry.tags.any { canonicalThemeTag(it) == DYNAMIC_TAG }
+        buildList {
+            if (item.isR18Theme() && !hasR18Tag) add(R18_TAG)
+            // v6 packages are badged even when their author never typed the tag.
+            if (item.isDynamicTheme() && !hasDynamicTag) add(DYNAMIC_TAG)
+            addAll(entry.tags)
+        }
     }
     val commentsLoggedIn = state.accounts.any { account ->
         account.source.baseUrl == item.source.baseUrl
@@ -284,6 +290,9 @@ internal fun ThemeStoreDetailScreen(
                         }
                         if (item.isAdaptiveTheme()) {
                             AdaptiveThemeBadge()
+                        }
+                        if (item.isDynamicTheme()) {
+                            DynamicThemeBadge()
                         }
                     }
                     if (compatible) {

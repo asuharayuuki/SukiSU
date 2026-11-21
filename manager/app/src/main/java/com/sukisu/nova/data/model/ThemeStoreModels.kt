@@ -31,6 +31,8 @@ data class ThemeStoreEntry(
     val tags: List<String> = emptyList(),
     
     val adaptive: Boolean = false,
+    /** Format v6 and newer can carry the shared dynamic wallpaper/card media. */
+    val dynamic: Boolean = false,
     val r18: Boolean = false,
     val license: String = "",
     val minManagerVersion: Long = 0L,

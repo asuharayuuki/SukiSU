@@ -196,6 +196,7 @@ fun ThemeStoreScreen(
     var showSubmissions by rememberSaveable { mutableStateOf(false) }
     var showMessages by rememberSaveable { mutableStateOf(false) }
     var showHistory by rememberSaveable { mutableStateOf(false) }
+    var showDownloads by rememberSaveable { mutableStateOf(false) }
     var showPreferences by rememberSaveable { mutableStateOf(false) }
     var showConsentDialog by rememberSaveable { mutableStateOf(false) }
     var showAccountPicker by rememberSaveable { mutableStateOf(false) }
@@ -256,16 +257,18 @@ fun ThemeStoreScreen(
         }
     }
     val adaptiveSearchLabel = stringResource(R.string.theme_adaptive_tag)
+    val dynamicSearchLabel = stringResource(R.string.theme_dynamic_tag)
     val visibleItems = remember(
         catalogItems,
         searchQuery,
         sortMode,
         selectedTags,
         adaptiveSearchLabel,
+        dynamicSearchLabel,
         state.followedAuthorKeys,
     ) {
         catalogItems
-            .filter { it.matchesSearch(searchQuery, adaptiveSearchLabel) }
+            .filter { it.matchesSearch(searchQuery, adaptiveSearchLabel, dynamicSearchLabel) }
             .filterByThemeTags(selectedTags)
             .sortedFor(sortMode)
             .followedFirst(state.followedAuthorKeys)
@@ -294,6 +297,8 @@ fun ThemeStoreScreen(
 
     fun openUpload(account: ThemeStoreAccount) {
         showSubmissions = false
+        showHistory = false
+        showDownloads = false
         editingThemeId = null
         editingThemeBaseUrl = null
         selectedUploadBaseUrl = account.source.baseUrl
@@ -400,6 +405,10 @@ fun ThemeStoreScreen(
 
     LaunchedEffect(showHistory) {
         if (showHistory) viewModel.refreshHistory()
+    }
+
+    LaunchedEffect(showDownloads) {
+        if (showDownloads) viewModel.refreshDownloads()
     }
 
     LaunchedEffect(state.uploadSubmitted) {
@@ -567,6 +576,10 @@ fun ThemeStoreScreen(
         showHistory = false
     }
 
+    BackHandler(enabled = showDownloads && detailItem == null && currentAuthor == null) {
+        showDownloads = false
+    }
+
     when {
         showPreferences -> ThemeStorePreferencesScreen(
             consentAccepted = !state.needsConsent,
@@ -695,6 +708,29 @@ fun ThemeStoreScreen(
             onLoadAdaptiveTheme = { settingsViewModel.createAdaptiveThemePackage(context).getOrNull() },
         )
 
+        showDownloads -> ThemeStoreDownloadsScreen(
+            downloads = state.downloads,
+            loading = state.downloadsLoading,
+            previewFor = viewModel::downloadPreviewFile,
+            onBack = { showDownloads = false },
+            onApply = { record ->
+                val file = viewModel.downloadFile(record)
+                if (file.isFile) {
+                    settingsViewModel.importThemeFile(context, file, keepFile = true)
+                } else {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.theme_store_downloads_missing),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                    viewModel.refreshDownloads()
+                }
+            },
+            onDelete = viewModel::deleteDownloads,
+            onClear = viewModel::clearDownloads,
+            onRefresh = viewModel::refreshDownloads,
+        )
+
         showHistory -> ThemeStoreHistoryScreen(
             viewedHistory = if (state.showR18) state.viewedHistory
                 else state.viewedHistory.filterNot { it.r18 },
@@ -818,6 +854,7 @@ fun ThemeStoreScreen(
                 returnToSubmissions = false
                 viewModel.clearUploadState()
                 showMessages = false
+                showDownloads = false
                 showSubmissions = true
             },
             onOpenMessages = {
@@ -827,6 +864,7 @@ fun ThemeStoreScreen(
                 editingThemeBaseUrl = null
                 returnToSubmissions = false
                 viewModel.clearUploadState()
+                showDownloads = false
                 showMessages = true
             },
             onOpenHistory = {
@@ -834,11 +872,24 @@ fun ThemeStoreScreen(
                 showUpload = false
                 showSubmissions = false
                 showMessages = false
+                showDownloads = false
                 editingThemeId = null
                 editingThemeBaseUrl = null
                 returnToSubmissions = false
                 viewModel.clearUploadState()
                 showHistory = true
+            },
+            onOpenDownloads = {
+                viewModel.refreshDownloads()
+                showUpload = false
+                showSubmissions = false
+                showMessages = false
+                showHistory = false
+                editingThemeId = null
+                editingThemeBaseUrl = null
+                returnToSubmissions = false
+                viewModel.clearUploadState()
+                showDownloads = true
             },
             onOpenUpload = {
                 val preferred = viewModel.preferredUploadAccount()
@@ -1212,6 +1263,7 @@ private fun ThemeStoreMaterial(
     onOpenSubmissions: () -> Unit,
     onOpenMessages: () -> Unit,
     onOpenHistory: () -> Unit,
+    onOpenDownloads: () -> Unit,
     onOpenUpload: () -> Unit,
     onInstallLocal: () -> Unit,
     onSelect: (ThemeStoreItem) -> Unit,
@@ -1363,6 +1415,19 @@ private fun ThemeStoreMaterial(
                                 onClick = {
                                     menuExpanded = false
                                     onOpenHistory()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { MaterialText(stringResource(R.string.theme_store_downloads_title)) },
+                                leadingIcon = {
+                                    MaterialIcon(
+                                        imageVector = Icons.Rounded.FileDownload,
+                                        contentDescription = null,
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    onOpenDownloads()
                                 },
                             )
                             DropdownMenuItem(
@@ -1690,7 +1755,7 @@ internal fun ThemeCardMaterial(
                         ),
                     ),
             )
-            if (item.isR18Theme() || item.isAdaptiveTheme()) {
+            if (item.isR18Theme() || item.isAdaptiveTheme() || item.isDynamicTheme()) {
                 Column(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -1703,6 +1768,9 @@ internal fun ThemeCardMaterial(
                     }
                     if (item.isAdaptiveTheme()) {
                         AdaptiveThemeBadge()
+                    }
+                    if (item.isDynamicTheme()) {
+                        DynamicThemeBadge()
                     }
                 }
             }
@@ -1953,7 +2021,7 @@ internal fun ThemeGridCardMaterial(
                         ),
                     ),
             )
-            if (item.isR18Theme() || item.isAdaptiveTheme()) {
+            if (item.isR18Theme() || item.isAdaptiveTheme() || item.isDynamicTheme()) {
                 Column(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -1966,6 +2034,9 @@ internal fun ThemeGridCardMaterial(
                     }
                     if (item.isAdaptiveTheme()) {
                         AdaptiveThemeBadge(compact = true)
+                    }
+                    if (item.isDynamicTheme()) {
+                        DynamicThemeBadge(compact = true)
                     }
                 }
             }

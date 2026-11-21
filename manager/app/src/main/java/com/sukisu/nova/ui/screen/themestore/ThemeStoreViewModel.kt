@@ -23,6 +23,9 @@ import com.sukisu.nova.data.model.ThemeStoreEntry
 import com.sukisu.nova.data.repository.AccountRepository
 import com.sukisu.nova.data.repository.SettingsRepositoryImpl
 import com.sukisu.nova.data.repository.ThemeCatalogLoad
+import com.sukisu.nova.data.repository.ThemeDownloadInput
+import com.sukisu.nova.data.repository.ThemeDownloadRecord
+import com.sukisu.nova.data.repository.ThemeDownloadStore
 import com.sukisu.nova.data.repository.ThemeStoreDefaults
 import com.sukisu.nova.data.repository.ThemeStoreHistoryEntry
 import com.sukisu.nova.data.repository.ThemeStoreHistoryKind
@@ -237,6 +240,9 @@ data class ThemeStoreUiState(
     val messagesError: String? = null,
     val messagesSending: Boolean = false,
     val messagesRetentionDays: Long = 0L,
+    /** Packages persisted by [ThemeDownloadStore] for the "My downloads" screen. */
+    val downloads: List<ThemeDownloadRecord> = emptyList(),
+    val downloadsLoading: Boolean = false,
 )
 
 private data class PreparedThemeUpload(
@@ -260,6 +266,8 @@ class ThemeStoreViewModel(application: Application) : AndroidViewModel(applicati
         const val AVATAR_MAX_EDGE = 256
         const val SCREENSHOT_MAX_EDGE = 1080
         const val WEBP_QUALITY = 80
+        /** Cap on covers refetched when the downloads list opens without thumbnails. */
+        const val MAX_PREVIEW_BACKFILL = 12
         val THEME_ID_PATTERN = Regex("^[a-z0-9][a-z0-9-]{0,63}$")
         val AUTHOR_ID_PATTERN = Regex("^[A-Za-z0-9._~-]{16,128}$")
     }
@@ -268,6 +276,7 @@ class ThemeStoreViewModel(application: Application) : AndroidViewModel(applicati
     private val settings = SettingsRepositoryImpl()
     private val account = AccountRepository(application)
     private val consentStore = ThemeStoreConsentStore(application)
+    private val downloadStore = ThemeDownloadStore(application)
     private val initialConsent = consentStore.read()
     private var historyJob: kotlinx.coroutines.Job? = null
     private var editPrefillJob: kotlinx.coroutines.Job? = null
@@ -907,7 +916,7 @@ class ThemeStoreViewModel(application: Application) : AndroidViewModel(applicati
             var meter: TransferSpeedMeter? = null
             val telemetryLock = Any()
             var lastTelemetryAt = 0L
-            repository.downloadTheme(
+            val downloadResult = repository.downloadTheme(
                 entry = item.entry,
                 baseUrl = item.source.baseUrl,
                 token = item.source.token,
@@ -944,37 +953,40 @@ class ThemeStoreViewModel(application: Application) : AndroidViewModel(applicati
                         }
                     }
                 },
-            ).fold(
-                onSuccess = { file ->
-                    _uiState.update {
-                        it.copy(
-                            downloadingKey = null,
-                            downloadProgress = 1f,
-                            downloadTransferredBytes = item.entry.size,
-                            downloadTotalBytes = item.entry.size,
-                            downloadSpeedBytesPerSecond = 0L,
-                            downloadEtaSeconds = null,
-                            downloaded = DownloadedTheme(item, file, trial),
-                            verifiedThemeKey = item.key,
-                        )
-                    }
-                    recordDownload(item)
-                },
-                onFailure = {
-                    _uiState.update {
-                        it.copy(
-                            downloadingKey = null,
-                            downloadTrial = false,
-                            downloadProgress = 0f,
-                            downloadTransferredBytes = 0L,
-                            downloadTotalBytes = 0L,
-                            downloadSpeedBytesPerSecond = 0L,
-                            downloadEtaSeconds = null,
-                            downloadFailed = true,
-                        )
-                    }
-                },
             )
+            val downloadedFile = downloadResult.getOrNull()
+            if (downloadedFile != null) {
+                // Copy into the persistent library before the import dialog consumes (and
+                // deletes) the cache file, then surface the package to the caller.
+                val record = persistDownload(item, downloadedFile)
+                _uiState.update {
+                    it.copy(
+                        downloadingKey = null,
+                        downloadProgress = 1f,
+                        downloadTransferredBytes = item.entry.size,
+                        downloadTotalBytes = item.entry.size,
+                        downloadSpeedBytesPerSecond = 0L,
+                        downloadEtaSeconds = null,
+                        downloaded = DownloadedTheme(item, downloadedFile, trial),
+                        verifiedThemeKey = item.key,
+                    )
+                }
+                recordDownload(item)
+                if (record != null) fetchDownloadPreview(item, record.key)
+            } else {
+                _uiState.update {
+                    it.copy(
+                        downloadingKey = null,
+                        downloadTrial = false,
+                        downloadProgress = 0f,
+                        downloadTransferredBytes = 0L,
+                        downloadTotalBytes = 0L,
+                        downloadSpeedBytesPerSecond = 0L,
+                        downloadEtaSeconds = null,
+                        downloadFailed = true,
+                    )
+                }
+            }
         }
     }
 
@@ -985,6 +997,146 @@ class ThemeStoreViewModel(application: Application) : AndroidViewModel(applicati
     fun clearDownloadError() {
         _uiState.update { it.copy(downloadFailed = false) }
     }
+
+    /**
+     * Copies a freshly downloaded package into the persistent download library. This runs before
+     * the package is handed to the import dialog, which deletes the cache file it receives.
+     */
+    private suspend fun persistDownload(item: ThemeStoreItem, file: File): ThemeDownloadRecord? {
+        val entry = item.entry
+        val input = ThemeDownloadInput(
+            key = item.key,
+            themeId = entry.id,
+            sourceId = item.source.id,
+            baseUrl = item.source.baseUrl,
+            name = entry.name,
+            author = entry.author,
+            version = entry.version,
+            formatVersion = entry.formatVersion,
+            size = entry.size,
+            sha256 = entry.sha256,
+            adaptive = item.isAdaptiveTheme(),
+            dynamic = item.isDynamicTheme(),
+            r18 = item.isR18Theme(),
+            updatedAt = entry.updatedAt,
+            tags = entry.tags,
+            previewPath = entry.previewPath.ifBlank {
+                entry.screenshotPaths.firstOrNull().orEmpty()
+            },
+        )
+        val record = runCatching { downloadStore.save(input, file) }.getOrNull() ?: return null
+        _uiState.update { current ->
+            current.copy(
+                downloads = (listOf(record) + current.downloads.filterNot { it.key == record.key })
+                    .sortedByDescending { it.downloadedAt },
+            )
+        }
+        return record
+    }
+
+    /** Fetches the cover after the package is already usable, so the list can render offline. */
+    private fun fetchDownloadPreview(item: ThemeStoreItem, key: String) {
+        val entry = item.entry
+        val previewUrl = ThemeStoreRepository.assetUrl(item.source.baseUrl, entry.previewPath)
+            ?: entry.screenshotPaths.firstOrNull()?.let { path ->
+                ThemeStoreRepository.assetUrl(item.source.baseUrl, path)
+            }
+            ?: return
+        viewModelScope.launch {
+            // Resolve the device credential first: mirrors reject an empty header even though
+            // the repository can refresh a cached one lazily.
+            val token = repository.accessToken(item.source.baseUrl, item.source.token)
+                .getOrNull()
+                .orEmpty()
+            val bytes = runCatching {
+                repository.fetchPreviewBytes(previewUrl, token)
+            }.getOrNull() ?: return@launch
+            val updated = runCatching { downloadStore.attachPreview(key, bytes) }.getOrNull()
+                ?: return@launch
+            _uiState.update { current ->
+                current.copy(
+                    downloads = current.downloads.map {
+                        if (it.key == updated.key) updated else it
+                    },
+                )
+            }
+        }
+    }
+
+    fun refreshDownloads() {
+        if (_uiState.value.downloadsLoading) return
+        _uiState.update { it.copy(downloadsLoading = true) }
+        viewModelScope.launch {
+            val records = runCatching { downloadStore.list() }.getOrDefault(emptyList())
+            _uiState.update { it.copy(downloads = records, downloadsLoading = false) }
+            backfillDownloadPreviews(records)
+        }
+    }
+
+    /**
+     * Records written by older builds (or by a failed cover request) have no local thumbnail.
+     * Refetch the covers that are still reachable, one at a time, so the list fills in without
+     * blocking the store or hammering the mirror.
+     */
+    private fun backfillDownloadPreviews(records: List<ThemeDownloadRecord>) {
+        val missing = records.filter { downloadPreviewFile(it) == null }
+        if (missing.isEmpty()) return
+        viewModelScope.launch {
+            val sources = withContext(Dispatchers.IO) { configuredSources() }
+            val catalog = _uiState.value.items
+            for ((key, themeId, sourceId, baseUrl1, _, _, _, _, _, _, _, _, previewPath) in missing.take(MAX_PREVIEW_BACKFILL)) {
+                val source = sources.firstOrNull {
+                    it.id == sourceId ||
+                        it.baseUrl.trimEnd('/') == baseUrl1.trimEnd('/')
+                } ?: sources.firstOrNull()
+                val item = catalog.firstOrNull {
+                    it.entry.id == themeId &&
+                        it.source.baseUrl.trimEnd('/') == baseUrl1.trimEnd('/')
+                }
+                val baseUrl = baseUrl1.ifBlank { source?.baseUrl.orEmpty() }
+                val path = previewPath.ifBlank { item?.entry?.previewPath.orEmpty() }
+                    .ifBlank { item?.entry?.screenshotPaths?.firstOrNull().orEmpty() }
+                if (baseUrl.isBlank() || path.isBlank()) continue
+                val url = ThemeStoreRepository.assetUrl(baseUrl, path) ?: continue
+                val token = repository.accessToken(baseUrl, source?.token.orEmpty())
+                    .getOrNull()
+                    .orEmpty()
+                val bytes = runCatching { repository.fetchPreviewBytes(url, token) }
+                    .getOrNull() ?: continue
+                val updated = runCatching { downloadStore.attachPreview(key, bytes) }
+                    .getOrNull() ?: continue
+                _uiState.update { current ->
+                    current.copy(
+                        downloads = current.downloads.map {
+                            if (it.key == updated.key) updated else it
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    fun deleteDownloads(keys: Set<String>) {
+        if (keys.isEmpty()) return
+        viewModelScope.launch {
+            val remaining = runCatching { downloadStore.delete(keys) }
+                .getOrDefault(_uiState.value.downloads)
+            _uiState.update { it.copy(downloads = remaining) }
+        }
+    }
+
+    fun clearDownloads() {
+        viewModelScope.launch {
+            runCatching { downloadStore.clear() }
+            _uiState.update { it.copy(downloads = emptyList()) }
+        }
+    }
+
+    /** Cached package of [record]; the caller applies it through the theme import dialog. */
+    fun downloadFile(record: ThemeDownloadRecord): File = downloadStore.fileFor(record)
+
+    /** Locally cached cover of [record] for the downloads list. */
+    fun downloadPreviewFile(record: ThemeDownloadRecord): File? = downloadStore.previewFor(record)
 
     fun submit(input: ThemeStoreUploadInput, source: ThemeStoreSource) {
         if (_uiState.value.submitting) return
@@ -2064,6 +2216,7 @@ private fun String.searchKey(): String =
 internal fun ThemeStoreItem.matchesSearch(
     query: String,
     adaptiveLabel: String = ADAPTIVE_TAG,
+    dynamicLabel: String = DYNAMIC_TAG,
 ): Boolean {
     val normalized = query.trim().lowercase(Locale.ROOT)
     if (normalized.isEmpty()) return true
@@ -2074,6 +2227,7 @@ internal fun ThemeStoreItem.matchesSearch(
         append(entry.description).append(' ')
         append(entry.tags.joinToString(" ")).append(' ')
         if (isAdaptiveTheme()) append(adaptiveLabel).append(" adaptive ")
+        if (isDynamicTheme()) append(dynamicLabel).append(" dynamic ")
         append(source.name).append(' ')
         append(source.baseUrl)
     }.lowercase(Locale.ROOT)

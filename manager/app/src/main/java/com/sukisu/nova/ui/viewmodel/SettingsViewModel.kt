@@ -1490,7 +1490,11 @@ homePillScale = if (options.homeCardDisplay) source.homePillScale else null,
     }
 
     
-    fun importThemeFile(context: Context, file: File) {
+    /**
+     * Applies a package file through the import dialog. Temporary download files are deleted
+     * afterwards; [keepFile] preserves packages that live in the persistent download library.
+     */
+    fun importThemeFile(context: Context, file: File, keepFile: Boolean = false) {
         viewModelScope.launch {
             ThemePackageStorage.import(context, Uri.fromFile(file))
                 .onSuccess { imported ->
@@ -1504,7 +1508,7 @@ homePillScale = if (options.homeCardDisplay) source.homePillScale else null,
                 .onFailure {
                     Toast.makeText(ksuApp, R.string.theme_import_failed, Toast.LENGTH_SHORT).show()
                 }
-            runCatching { file.delete() }
+            if (!keepFile) runCatching { file.delete() }
         }
     }
 

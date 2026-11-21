@@ -9,6 +9,7 @@ import com.sukisu.nova.data.model.ThemeStoreHealth
 import com.sukisu.nova.data.model.ThemeStoreSubmitResponse
 import com.sukisu.nova.data.repository.ThemeStoreRepository.Companion.MAX_DOWNLOAD_CACHE_BYTES
 import com.sukisu.nova.ksuApp
+import com.sukisu.nova.ui.util.ThemeMediaCrypto
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -221,6 +222,9 @@ class ThemeStoreRepository(
         private const val DOWNLOAD_PROGRESS_INTERVAL_NANOS = 100_000_000L
 
         private const val MAX_DOWNLOAD_CACHE_BYTES = 256L * 1024L * 1024L
+
+        /** Covers in "My downloads" are small thumbnails; reject oversized responses early. */
+        private const val MAX_PREVIEW_CACHE_BYTES = 8L * 1024L * 1024L
         
         private val ACTIVE_CACHE_GRACE_MS = TimeUnit.HOURS.toMillis(1)
         private val SHA256_PATTERN = Regex("^[0-9a-fA-F]{64}$")
@@ -474,6 +478,44 @@ class ThemeStoreRepository(
             onTransferred(entry.size, entry.size)
             finalFile
         }
+    }
+
+    /**
+     * Fetches a theme image (normally the preview cover) so the download library can keep a
+     * thumbnail offline. Failures are not fatal: the caller simply stores no preview.
+     *
+     * The store client carries no Coil interceptor, so a direct CNB response is still sealed
+     * with the `SKM1` envelope: open it here, and fall back to a plaintext request if the
+     * envelope cannot be read (for example after a media-key rotation).
+     */
+    suspend fun fetchPreviewBytes(
+        url: String,
+        token: String,
+        maxBytes: Long = MAX_PREVIEW_CACHE_BYTES,
+    ): ByteArray? = withContext(Dispatchers.IO) {
+        fun request(direct: Boolean): ByteArray? = runCatching {
+            // Device credentials are rotated per request; a raw header value from the source
+            // config is rejected by the mirror, which used to leave the downloads list blind.
+            val builder = Request.Builder()
+                .url(url)
+                .withToken(token)
+            if (direct) builder.header(MEDIA_DIRECT_HEADER, MEDIA_DIRECT_VALUE)
+            client.newCall(builder.build()).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val body = response.body
+                if (body.contentLength() > maxBytes) return@use null
+                val bytes = body.bytes()
+                bytes.takeIf { it.isNotEmpty() && it.size <= maxBytes }
+            }
+        }.getOrNull()
+
+        val direct = request(direct = true) ?: return@withContext null
+        val plain = if (ThemeMediaCrypto.isSealed(direct)) {
+            runCatching { ThemeMediaCrypto.decrypt(direct) }.getOrNull()
+        } else {
+            direct
+        }
+        (plain ?: request(direct = false))?.takeIf { it.isNotEmpty() }
     }
 
     /**
