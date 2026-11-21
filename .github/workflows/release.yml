@@ -27,29 +27,7 @@ jobs:
       - name: Checkout
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -eux
-          remote="https://git.zako.shirkneko.top:20004"
-          mirror="/ci/repo-cache/${GITHUB_REPOSITORY}.git"
-          mkdir -p "$(dirname "$mirror")"
-          if [ ! -d "$mirror" ]; then
-            # The token must not appear in the trace of `set -x`.
-            set +x
-            git -c "http.${remote}/.extraHeader=Authorization: token ${TOKEN}" \
-              clone -q --mirror "${remote}/${GITHUB_REPOSITORY}.git" "$mirror"
-            set -x
-          elif command -v flock >/dev/null 2>&1; then
-            (
-              flock 9
-              git --git-dir="$mirror" fetch -q --prune origin \
-                "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/pull/*"
-            ) 9>"${mirror}.lock"
-          else
-            git --git-dir="$mirror" fetch -q --prune origin \
-              "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/pull/*"
-          fi
-          git clone -q --shared --no-checkout "$mirror" .
-          git checkout -q "${GITHUB_SHA}"
+        run: /ci/tools/bin/ci-checkout
 
       - name: Calculate version code
         id: version
@@ -59,6 +37,25 @@ jobs:
           VERSION_CODE=$((30000 + COMMIT_COUNT + 996))
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "KernelSU version code: $VERSION_CODE (main commits: $COMMIT_COUNT)"
+
+      # See the note in ci.yml: Forgejo draws no job graph, so it goes in the
+      # summary, where Mermaid is rendered.
+      - name: Write the pipeline graph
+        run: |
+          set -eux
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
+          ci_summary_graph "发布流水线" \
+            determine-version:build-lkm \
+            build-lkm:build-ksud \
+            build-ksuinit:build-ksud \
+            build-builtzygisk:build-ksud \
+            build-ksud:manager \
+            manager:publish \
+            build-lkm:assemble \
+            build-ksuinit:assemble \
+            build-ksud:assemble \
+            manager:assemble \
+            assemble:publish-release
 
   build-lkm:
     needs: [determine-version]
@@ -111,51 +108,13 @@ jobs:
       - name: Checkout
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -eux
-          remote="https://git.zako.shirkneko.top:20004"
-          mirror="/ci/repo-cache/${GITHUB_REPOSITORY}.git"
-          mkdir -p "$(dirname "$mirror")"
-          if [ ! -d "$mirror" ]; then
-            # The token must not appear in the trace of `set -x`.
-            set +x
-            git -c "http.${remote}/.extraHeader=Authorization: token ${TOKEN}" \
-              clone -q --mirror "${remote}/${GITHUB_REPOSITORY}.git" "$mirror"
-            set -x
-          elif command -v flock >/dev/null 2>&1; then
-            (
-              flock 9
-              git --git-dir="$mirror" fetch -q --prune origin \
-                "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/pull/*"
-            ) 9>"${mirror}.lock"
-          else
-            git --git-dir="$mirror" fetch -q --prune origin \
-              "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/pull/*"
-          fi
-          git clone -q --shared --no-checkout "$mirror" .
-          git checkout -q "${GITHUB_SHA}"
+        run: /ci/tools/bin/ci-checkout
 
       - name: Provide node and the action sources
         run: |
           set -eux
-          # act runs JS actions with `node` from the container PATH, and it would
-          # otherwise clone every `uses:` action from data.forgejo.org. Both are
-          # pre-seeded in the shared /ci volume, so a job needs no network for
-          # either.
-          found=
-          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
-            if [ -x "$dir/node" ]; then
-              echo "$dir" >> "$GITHUB_PATH"
-              found=1
-              break
-            fi
-          done
-          [ -n "$found" ] || { echo "node not found (tool cache and /ci/tools/node)" >&2; exit 1; }
-          mkdir -p "$GITHUB_WORKSPACE/.ci-actions"
-          for action in upload-artifact download-artifact; do
-            rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
-            cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
-          done
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
+          ci_provide_node
       - name: Download the build artifacts
         id: download_build
         continue-on-error: true
@@ -253,33 +212,7 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           RUN_URL: https://git.zako.shirkneko.top:20004/${{ github.repository }}/actions/runs/${{ github.run_number || github.run_id }}
           EVENT: ${{ toJson(github.event) }}
-        run: |
-          set -eu
-          if [ -z "${CNB_TOKEN:-}" ]; then
-            echo "CNB_TOKEN is not configured; skipping CNB Telegram trigger"
-            exit 0
-          fi
-          version="$(git rev-list --count HEAD 2>/dev/null || true)"
-          commit_text="$(git log -1 --format='%s by %an' 2>/dev/null | cut -c1-400)"
-          changes_url="$(printf '%s' "${EVENT:-}" | jq -r '.compare // .head_commit.url // empty' 2>/dev/null || true)"
-          if [ -z "$changes_url" ]; then
-            changes_url="https://git.zako.shirkneko.top:20004/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
-          fi
-          telegram_script_b64="$(base64 -w0 .github/scripts/upload-telegram.sh)"
-          payload="$(jq -nc --arg tag "$CNB_TAG" --arg kind "$CNB_KIND" \
-            --arg thread "$THREAD_ID" --arg bot "$BOT_TOKEN" --arg chat "$CHAT_ID" \
-            --arg api "$TG_API_BASE" --arg title "$TITLE" --arg branch "$BRANCH" \
-            --arg version "$version" --arg commit "$commit_text" \
-            --arg run "$RUN_URL" --arg changes "$changes_url" \
-            --arg script "$telegram_script_b64" \
-            '{event:"api_trigger_telegram",env:{TAG:$tag,KIND:$kind,THREAD_ID:$thread,TG_BOT_TOKEN:$bot,TG_CHAT_ID:$chat,TG_API_BASE:$api,TITLE:$title,BRANCH:$branch,VERSION:$version,COMMIT_TEXT:$commit,RUN_URL:$run,CHANGES_URL:$changes,TELEGRAM_SCRIPT_B64:$script}}')"
-          curl -fsS --retry 3 --retry-all-errors -X POST \
-            -H "Authorization: Bearer ${CNB_TOKEN}" \
-            -H 'Accept: application/json' \
-            -H 'Content-Type: application/json' \
-            -d "$payload" \
-            "https://api.cnb.cool/${CNB_REPO}/-/build/start" >/dev/null
-          echo "triggered CNB Telegram delivery"
+        run: bash .github/scripts/ci/telegram-trigger.sh
 
       - name: Store the release bundle for LAN handoff
         run: |
@@ -313,60 +246,10 @@ jobs:
           CNB_WEB: ${{ vars.CNB_WEB || 'https://cnb.cool' }}
         run: |
           set -eu
-          site="${FORGEJO_PUBLIC_URL:-https://git.zako.shirkneko.top:20004}"
-          api="${site}/api/v1/repos/${GITHUB_REPOSITORY}"
-          auth="Authorization: token ${API_TOKEN}"
-          tag="${GITHUB_REF_NAME}"
-          body="$(printf 'Release assets built by CI.\n\n下载 / Download: %s/%s/-/releases/tag/%s\n' \
-            "$CNB_WEB" "$CNB_REPO" "$tag")"
-
-          net() {
-            curl -sS --retry 5 --retry-all-errors --retry-delay 2 \
-              --connect-timeout 10 --max-time 120 "$@"
-          }
-          net_once() {
-            curl -sS --retry 5 --retry-connrefused --retry-delay 2 \
-              --connect-timeout 10 --max-time 120 "$@"
-          }
-
-          release="$api/releases/tags/$tag"
-          status="$(net -o /tmp/release.json -w '%{http_code}' -H "$auth" "$release" || true)"
-          echo "existing release: HTTP ${status}"
-          if [ "$status" = "200" ]; then
-            id="$(jq -r '.id' /tmp/release.json)"
-          else
-            payload="$(jq -nc --arg tag "$tag" --arg sha "$GITHUB_SHA" --arg body "$body" \
-              '{tag_name: $tag, target_commitish: $sha, name: $tag, prerelease: false,
-                body: $body}')"
-            net_once -X POST -H "$auth" -H 'Content-Type: application/json' \
-              -d "$payload" "$api/releases" >/dev/null || true
-            # A lost response can leave the release behind anyway; read it back.
-            net -H "$auth" "$release" -o /tmp/release.json
-            id="$(jq -r '.id' /tmp/release.json)"
-          fi
-          test -n "$id" && [ "$id" != "null" ]
-
-          # Drop the assets of previous publishes: they are stale copies, and the
-          # link in the body is the only download this page offers now.
-          for asset_id in $(jq -r '.assets[]?.id' /tmp/release.json); do
-            net -f -X DELETE -H "$auth" "$api/releases/${id}/assets/$asset_id" >/dev/null
-          done
-
-          payload="$(jq -nc --arg tag "$tag" --arg sha "$GITHUB_SHA" --arg body "$body" \
-            '{tag_name: $tag, target_commitish: $sha, name: $tag, prerelease: false,
-              body: $body}')"
-          net -f -X PATCH -H "$auth" -H 'Content-Type: application/json' \
-            -d "$payload" "$api/releases/${id}" >/dev/null
-
-          net -H "$auth" "$release" -o /tmp/release-after.json
-          actual="$(jq -r '.name // ""' /tmp/release-after.json)"
-          left="$(jq -r '.assets | length' /tmp/release-after.json)"
-          test "$actual" = "$tag" || {
-            echo "release name is '${actual}', expected '${tag}'" >&2
-            exit 1
-          }
-          test "$left" = "0" || {
-            echo "release still carries ${left} asset(s); stale files must not stay" >&2
-            exit 1
-          }
-          echo "release ${tag} points at CNB: ${CNB_WEB}/${CNB_REPO}/-/releases/tag/${tag}"
+          export RELEASE_TAG="${GITHUB_REF_NAME}"
+          export RELEASE_NAME="${GITHUB_REF_NAME}"
+          export RELEASE_PRERELEASE=false
+          RELEASE_BODY="$(printf 'Release assets built by CI.\n\n下载 / Download: %s/%s/-/releases/tag/%s\n' \
+            "$CNB_WEB" "$CNB_REPO" "$GITHUB_REF_NAME")"
+          export RELEASE_BODY
+          bash .github/scripts/ci/forgejo-release.sh

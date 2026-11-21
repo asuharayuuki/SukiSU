@@ -146,29 +146,7 @@ jobs:
       - name: Checkout
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -eux
-          remote="https://git.zako.shirkneko.top:20004"
-          mirror="/ci/repo-cache/${GITHUB_REPOSITORY}.git"
-          mkdir -p "$(dirname "$mirror")"
-          if [ ! -d "$mirror" ]; then
-            # The token must not appear in the trace of `set -x`.
-            set +x
-            git -c "http.${remote}/.extraHeader=Authorization: token ${TOKEN}" \
-              clone -q --mirror "${remote}/${GITHUB_REPOSITORY}.git" "$mirror"
-            set -x
-          elif command -v flock >/dev/null 2>&1; then
-            (
-              flock 9
-              git --git-dir="$mirror" fetch -q --prune origin \
-                "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/pull/*"
-            ) 9>"${mirror}.lock"
-          else
-            git --git-dir="$mirror" fetch -q --prune origin \
-              "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/pull/*"
-          fi
-          git clone -q --shared --no-checkout "$mirror" .
-          git checkout -q "${GITHUB_SHA}"
+        run: /ci/tools/bin/ci-checkout
 
       - name: Calculate version code
         id: version
@@ -178,6 +156,22 @@ jobs:
           VERSION_CODE=$((30000 + COMMIT_COUNT + 996))
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "KernelSU version code: $VERSION_CODE (main commits: $COMMIT_COUNT)"
+
+      # The run page lists jobs but draws no dependencies (forgejo#12717), so the
+      # shape is written where Forgejo 17 does render it: the job summary.
+      - name: Write the pipeline graph
+        run: |
+          set -eux
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
+          ci_summary_graph "流水线" \
+            generate-key:build-lkm \
+            determine-version:build-lkm \
+            build-lkm:build-ksud \
+            build-ksuinit:build-ksud \
+            build-builtzygisk:build-ksud \
+            build-ksud:manager \
+            generate-key:manager \
+            manager:publish
 
   build-lkm:
     needs: [generate-key, determine-version]

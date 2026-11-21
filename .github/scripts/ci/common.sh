@@ -41,27 +41,37 @@ else
 	exit 1
 fi
 
-# ci_checkout [depth]
-#   depth 1 (default) fetches just the triggering commit. depth 0 fetches all
-#   branches and tags, which the version-code and changelog steps need.
-ci_checkout() {
-	local depth="${1:-1}"
-	local auth="${TOKEN:-${GITHUB_TOKEN:-}}"
+# ci_provide_node
+#   act runs JS actions with `node` from the container PATH, and it would
+#   otherwise clone every `uses:` action from data.forgejo.org. Both are
+#   pre-seeded in the shared /ci volume, so a job needs no network.
+#
+#   Appends to $GITHUB_PATH, so it has to run before the step that uses
+#   `uses:`; a later step in the same job still picks it up.
+#
+#   Checkout is not here on purpose: a job must clone before it can read this
+#   file. The runner host provides /ci/tools/bin/ci-checkout instead, seeded by
+#   scripts/host/seed-ci-tools.sh.
+ci_provide_node() {
+	local found="" dir action
 
-	git init -q .
-	if [ -n "$auth" ]; then
-		# Kept in a config value so the credential never shows up in
-		# `git remote -v` or in error output.
-		git config "http.${CI_REMOTE}/.extraHeader" "Authorization: token ${auth}"
-	fi
-	git remote add origin "${CI_REMOTE}/${GITHUB_REPOSITORY}.git"
+	for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
+		if [ -x "$dir/node" ]; then
+			echo "$dir" >>"$GITHUB_PATH"
+			found=1
+			break
+		fi
+	done
+	[ -n "$found" ] || {
+		echo "node not found (tool cache and /ci/tools/node)" >&2
+		return 1
+	}
 
-	if [ "$depth" = "0" ]; then
-		git fetch -q origin "+refs/heads/*:refs/remotes/origin/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/remotes/origin/pull/*"
-	else
-		git fetch -q --depth "$depth" origin "${GITHUB_SHA}"
-	fi
-	git checkout -q "${GITHUB_SHA}"
+	mkdir -p "$GITHUB_WORKSPACE/.ci-actions"
+	for action in upload-artifact download-artifact; do
+		rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
+		cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
+	done
 }
 
 # ci_artifact_path NAME -> absolute directory for one artifact
@@ -439,4 +449,48 @@ ci_summary_release() {
 			echo "> 没有 CNB token，产物只留在 runner 的 \`/ci\` 上。"
 		fi
 	} >> "$summary"
+}
+
+# ci_summary_graph TITLE EDGE...
+#   Job Summary: a Mermaid graph of the job dependencies, so the pipeline shape
+#   is visible in the run page instead of being implied by the job list.
+#
+#   Forgejo 17 renders Mermaid in job summaries (runner 13.2+), GitHub renders
+#   it natively, so one fragment works on both. It shows structure only: job
+#   durations and status stay in the job list, which owns them.
+#
+#   EDGE is "from:to", one per argument. Job names may contain dashes; the
+#   Mermaid node ids cannot, so they are substituted.
+ci_summary_graph() {
+	local title="$1"
+	shift
+	local summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
+	[ -n "$summary" ] || return 0
+	local nodes=" " edge name from to
+	{
+		echo "## ${title}"
+		echo
+		echo '```mermaid'
+		echo 'graph LR'
+		for edge in "$@"; do
+			for name in "${edge%%:*}" "${edge#*:}"; do
+				case "$nodes" in
+				*" ${name} "*) ;;
+				*)
+					nodes="${nodes}${name} "
+					echo "  ${name//-/_}[\"${name}\"]"
+					;;
+				esac
+			done
+		done
+		for edge in "$@"; do
+			from="${edge%%:*}"
+			to="${edge#*:}"
+			echo "  ${from//-/_} --> ${to//-/_}"
+		done
+		echo '```'
+		echo
+		echo "> 分支 \`${GITHUB_REF_NAME:-unknown}\` · 提交 \`${GITHUB_SHA:-unknown}\`。"
+		echo "> 图由各 job 的 \`needs\` 生成；耗时与状态见左侧 job 列表。"
+	} >>"$summary"
 }

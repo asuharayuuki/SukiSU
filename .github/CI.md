@@ -13,7 +13,10 @@ Everything under `.github/` is executed by the CI itself. The two exceptions are
 .github/
 ├── workflows/       one stage per file, each dispatchable on its own
 ├── image/           the CI image definitions (docker build on the runner host)
-├── scripts/ci/      shell libraries sourced inside a job (common.sh, cnb.sh, parallel.sh)
+├── scripts/ci/      shell libraries sourced inside a job
+│                    common.sh, cnb.sh, cnb-upload.sh, parallel.sh
+│                    plus three scripts a single step calls:
+│                    ci-checkout.sh, telegram-trigger.sh, forgejo-release.sh
 ├── scripts/         upload-telegram.sh (inlined as base64 by publish/release),
 │                    setup-rust-build.sh
 ├── riscv64-cargo.toml
@@ -22,8 +25,31 @@ Everything under `.github/` is executed by the CI itself. The two exceptions are
 ```
 
 Tools that are never run by CI live outside, in `scripts/`: `scripts/dev/` for the
-developer machine, `scripts/host/` for the runner host. Neither is referenced by a
-workflow, so editing them cannot break a build.
+developer machine, `scripts/host/` for the runner host. Only
+`scripts/host/seed-ci-tools.sh` relates to CI, and it runs on the host, not in a
+job.
+
+### Checkout lives on the host, not in the repository
+
+Every job starts with `run: /ci/tools/bin/ci-checkout`, and that file is not in
+this repository: a job has to clone before it can read anything the repository
+ships, so a checkout helper cannot be sourced from the tree it is fetching.
+
+The source of truth is `.github/scripts/ci/ci-checkout.sh`; the copy on the host
+is installed from it:
+
+```bash
+# Docker runner with a named volume (`forgejo-ci:/ci`, the layout this repo uses)
+CI_TOOLS_VOLUME=forgejo-ci bash scripts/host/seed-ci-tools.sh
+
+# Runner jobs that bind-mount a host directory instead
+bash scripts/host/seed-ci-tools.sh
+```
+
+`/ci/tools/bin` already holds `forgejo-runner` for the same reason, so a host is
+expected to be seeded. A host without this file fails at checkout with
+`/ci/tools/bin/ci-checkout: No such file or directory` (exit 127) — every job,
+in two seconds, before anything is built.
 
 ## Workflow layout
 
@@ -38,7 +64,19 @@ Each stage is its own workflow, so any of them can be dispatched alone:
 | `publish.yml` | — | rolling `manager-ci` (main) / `manager-dev` (dev) build and Telegram upload, one job |
 | `release.yml` | — | orchestrates the stages, then assembles `/ci/runs/<id>/release` |
 | `shellcheck.yml`, `clippy.yml`, `clang-format.yml`, `rustfmt.yml` | — | lint jobs |
-| `validate.yml` | — | `forgejo-runner validate` on the workflow files, plus a check that every helper the workflows source still exists |
+| `validate.yml` | — | `forgejo-runner validate` on the workflow files, a check that every helper the workflows source still exists, and one that every script they call by path is still on disk |
+
+### Showing the job graph
+
+Forgejo lists a run's jobs but draws no dependencies between them
+(forgejo#12717 is still open), so the shape is written where Forgejo does render
+it: `determine-version` appends a Mermaid graph to its job summary, built from
+the same `needs` the workflow uses. Forgejo 17 renders Mermaid in job summaries
+(runner 13.2 or newer); GitHub renders it natively.
+
+It is structure only. Durations, statuses and the click-through to a log stay in
+the job list, which owns them — a static graph cannot show what a finished run
+did anyway.
 
 `manager.yml` and `publish.yml` take `artifacts_run=<id>`, which seeds this run's
 artifact directory from an earlier run. That makes repackaging take minutes
@@ -84,7 +122,7 @@ one, so a running job keeps the image it started with.
 
 | Was | Now |
 | --- | --- |
-| `actions/checkout` | a shared bare mirror in `/ci/repo-cache`, cloned with `--shared` |
+| `actions/checkout` | `/ci/tools/bin/ci-checkout`, which clones from a shared bare mirror in `/ci/repo-cache` with `--shared` |
 | `actions/setup-java`, `android-actions/setup-android`, `nttld/setup-ndk`, `Swatinem/rust-cache` | baked into the image; each job runs a `Check toolchain` step |
 | `actions/upload-artifact`, `actions/download-artifact` | `ci_artifact_put` / `ci_download_artifact` from `.github/scripts/ci/common.sh`; CNB is the storage and the cross-runner transport, and summaries link to it |
 | `softprops/action-gh-release` | files collected under `${CI_ARTIFACT_ROOT}/release` |
@@ -151,7 +189,14 @@ works, and the masker no longer matches.
 /ci/tools/gradle/              Gradle user home
 ```
 
-On Windows the same tree is visible at `\\wsl$\Debian\srv\forgejo-ci`.
+`/ci` is a Docker named volume (`forgejo-ci`), not a host directory: 
+`container.options` mounts it as `--volume forgejo-ci:/ci`, and `valid_volumes`
+has to allow the same name. There is no `/srv/forgejo-ci` on the host, so read
+and write through a container:
+
+```bash
+docker run --rm -v forgejo-ci:/ci alpine ls /ci/tools/bin
+```
 
 `valid_volumes` matters: act silently drops a `--volume` it has not been told to
 allow, and the job then writes to a throwaway `/ci` inside the container.

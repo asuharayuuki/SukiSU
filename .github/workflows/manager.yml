@@ -69,58 +69,15 @@ jobs:
     steps:
 
       - name: Checkout
-        # The job defaults to ./manager, which does not exist before the clone.
-        working-directory: ${{ github.workspace }}
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -eux
-          remote="https://git.zako.shirkneko.top:20004"
-          mirror="/ci/repo-cache/${GITHUB_REPOSITORY}.git"
-          mkdir -p "$(dirname "$mirror")"
-          # One bare mirror per repository lives on the runner host, shared by
-          # every job through the /ci volume. Re-downloading the whole history
-          # per job made parallel jobs stall on the same fetch.
-          if [ ! -d "$mirror" ]; then
-            # The token must not appear in the trace of `set -x`.
-            set +x
-            git -c "http.${remote}/.extraHeader=Authorization: token ${TOKEN}" \
-              clone -q --mirror "${remote}/${GITHUB_REPOSITORY}.git" "$mirror"
-            set -x
-          elif command -v flock >/dev/null 2>&1; then
-            (
-              flock 9
-              git --git-dir="$mirror" fetch -q --prune origin \
-                "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/pull/*"
-            ) 9>"${mirror}.lock"
-          else
-            git --git-dir="$mirror" fetch -q --prune origin \
-              "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/pull/*"
-          fi
-          git clone -q --shared --no-checkout "$mirror" .
-          git checkout -q "${GITHUB_SHA}"
+        run: /ci/tools/bin/ci-checkout
 
       - name: Provide node and the action sources
         run: |
           set -eux
-          # act runs JS actions with `node` from the container PATH, and it would
-          # otherwise clone every `uses:` action from data.forgejo.org. Both are
-          # pre-seeded in the shared /ci volume, so a job needs no network for
-          # either.
-          found=
-          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
-            if [ -x "$dir/node" ]; then
-              echo "$dir" >> "$GITHUB_PATH"
-              found=1
-              break
-            fi
-          done
-          [ -n "$found" ] || { echo "node not found (tool cache and /ci/tools/node)" >&2; exit 1; }
-          mkdir -p "$GITHUB_WORKSPACE/.ci-actions"
-          for action in upload-artifact download-artifact; do
-            rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
-            cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
-          done
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
+          ci_provide_node
 
       - name: Set artifact name
         id: determine
@@ -365,32 +322,7 @@ jobs:
       - name: Checkout
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -eux
-          remote="https://git.zako.shirkneko.top:20004"
-          mirror="/ci/repo-cache/${GITHUB_REPOSITORY}.git"
-          mkdir -p "$(dirname "$mirror")"
-          # One bare mirror per repository lives on the runner host, shared by
-          # every job through the /ci volume. Re-downloading the whole history
-          # per job made parallel jobs stall on the same fetch.
-          if [ ! -d "$mirror" ]; then
-            # The token must not appear in the trace of `set -x`.
-            set +x
-            git -c "http.${remote}/.extraHeader=Authorization: token ${TOKEN}" \
-              clone -q --mirror "${remote}/${GITHUB_REPOSITORY}.git" "$mirror"
-            set -x
-          elif command -v flock >/dev/null 2>&1; then
-            (
-              flock 9
-              git --git-dir="$mirror" fetch -q --prune origin \
-                "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/pull/*"
-            ) 9>"${mirror}.lock"
-          else
-            git --git-dir="$mirror" fetch -q --prune origin \
-              "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/pull/*"
-          fi
-          git clone -q --shared --no-checkout "$mirror" .
-          git checkout -q "${GITHUB_SHA}"
+        run: /ci/tools/bin/ci-checkout
 
       - name: Set artifact name
         id: determine
@@ -406,24 +338,8 @@ jobs:
       - name: Provide node and the action sources
         run: |
           set -eux
-          # act runs JS actions with `node` from the container PATH, and it would
-          # otherwise clone every `uses:` action from data.forgejo.org. Both are
-          # pre-seeded in the shared /ci volume, so a job needs no network for
-          # either.
-          found=
-          for dir in /opt/acttoolcache/node/*/x64/bin /ci/tools/node/bin; do
-            if [ -x "$dir/node" ]; then
-              echo "$dir" >> "$GITHUB_PATH"
-              found=1
-              break
-            fi
-          done
-          [ -n "$found" ] || { echo "node not found (tool cache and /ci/tools/node)" >&2; exit 1; }
-          mkdir -p "$GITHUB_WORKSPACE/.ci-actions"
-          for action in upload-artifact download-artifact; do
-            rm -rf "$GITHUB_WORKSPACE/.ci-actions/$action"
-            cp -a "/ci/tools/actions/$action" "$GITHUB_WORKSPACE/.ci-actions/$action"
-          done
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
+          ci_provide_node
       - name: Download the build artifacts
         id: download_build
         continue-on-error: true
