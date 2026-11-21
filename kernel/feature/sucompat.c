@@ -563,9 +563,7 @@ static noinline int ksyscall_execve_ksud(const char *fn_name, void ***u_argv, vo
 	if (!current->mm)
 		return -EPERM;
 
-	const struct cred *old_cred = override_creds(ksu_cred);
 	struct file *file = filp_open("/data/adb/ksud", O_RDONLY, 0);
-	revert_creds(old_cred);
 	if (IS_ERR(file))
 		return PTR_ERR(file);
 
@@ -614,7 +612,7 @@ static noinline int ksyscall_execve_ksud(const char *fn_name, void ***u_argv, vo
 	uint32_t __user *c_ptr = (uint32_t __user *)argv;
 	int i = 0;
 
-	while (!get_user(buf4, &c_ptr[i]) && !!buf4 && i < 127) {
+	while ( i < 127 && !get_user(buf4, &c_ptr[i]) && !!buf4) {
 		uintptr_t buf8 = (uintptr_t)buf4;
 		if (!!put_user(buf8, &m_argv[i]))
 			break;
@@ -626,7 +624,7 @@ static noinline int ksyscall_execve_ksud(const char *fn_name, void ***u_argv, vo
 	i = 0;
 	c_ptr = (uint32_t __user *)envp;
 
-	while (!get_user(buf4, &c_ptr[i]) && !!buf4 && i < 127) {
+	while (i < 127 && !get_user(buf4, &c_ptr[i]) && !!buf4) {
 		uintptr_t buf8 = (uintptr_t)buf4;
 		if (!!put_user(buf8, &m_envp[i]))
 			break;
@@ -720,7 +718,7 @@ static __always_inline void ksu_sucompat_user_common(const char __user **filenam
 }
 
 // sys_faccessat
-SUCOMPAT_HOOK_TYPE ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *__unused_flags)
+SUCOMPAT_HOOK_TYPE ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *flags)
 {
 	ksu_sucompat_user_common(filename_user, "sys_faccessat");
 	return 0;

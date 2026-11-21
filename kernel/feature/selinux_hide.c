@@ -168,8 +168,14 @@ static __nocfi ssize_t ksu_selinux_transaction_write(struct file *file, const ch
 	if (sscanf(ar->data, "%x %x %x %x %u %x", &avd_allowed, &ff, &avd_auditallow, &avd_auditdeny, &avd_seqno, &avd_flags) != 6)
 		return ret;
 
+	if (IS_ENABLED(CONFIG_KSU_DEBUG))
+		pr_info("ar->data: before: %s \n", ar->data);
+
 	avd_seqno = 1; // simple_transaction_set()
 	ar->size = scnprintf(ar->data, SIMPLE_TRANSACTION_LIMIT, "%x %x %x %x %u %x", avd_allowed, ff, avd_auditallow, avd_auditdeny, avd_seqno, avd_flags);
+
+	if (IS_ENABLED(CONFIG_KSU_DEBUG))
+		pr_info("ar->data: after: %s \n", ar->data);
 
 	return ret;
 
@@ -396,6 +402,7 @@ try_again:
 	goto try_again;
 
 page_ok:
+#if defined(KSU_HAS_ARM64_SELINUX_HIDE)
 #ifdef CONFIG_KSU_SUSFS
 	// the kernel patch serves fake_status itself, no fops hijack needed
 	initialize_fake_status();
@@ -408,10 +415,12 @@ page_ok:
 		pr_warn("selinux_hide: fake status not ready, SUSFS status spoof disabled\n");
 	}
 #else
+	init_arm64_selinux_hide();
+#endif
+#else
 	ksu_init_hook_sel_handle_status_ops_open();
 	ksu_init_hook_transaction_ops_write();
 #endif
-
 	// selinux_setprocattr hook init is on lsm.
 	
 	// downstream/slow_avc_audit_defs.h
