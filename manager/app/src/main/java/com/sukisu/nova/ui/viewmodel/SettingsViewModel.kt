@@ -1526,60 +1526,62 @@ homePillScale = if (options.homeCardDisplay) source.homePillScale else null,
     }
 
     fun confirmImportTheme(context: Context, options: ThemePackageOptions) {
-        val pending = _uiState.value.pendingImportTheme ?: return
+        var claimed: ImportedTheme? = null
+        _uiState.update { state ->
+            val current = state.pendingImportTheme ?: return@update state
+            claimed = current
+            state.copy(
+                pendingImportTheme = null,
+                showThemeImportDialog = false,
+            )
+        }
+        val pending = claimed ?: return
         viewModelScope.launch {
-            val rollbackPackage = runCatching {
-                withContext(Dispatchers.IO) {
-                    createCurrentThemePackage(context, ThemePackageOptions()).getOrThrow()
-                }
-            }.getOrNull()
-            // Applying copies every extracted image and rewrites the appearance settings.
-            // Keeping it off the main thread avoids an ANR while a large package is promoted.
-            val applied = runCatching {
-                withContext(Dispatchers.IO) { applyImportedTheme(context, pending, options, clearFirst = true) }
-            }
-            if (applied.isFailure) {
-                AdaptiveThemeStore.clear(repo)
-                if (pending.isAdaptive) {
+            var rollbackPackage: File? = null
+            try {
+                rollbackPackage = runCatching {
                     withContext(Dispatchers.IO) {
-                        runCatching { ImageStorage.clearAdaptiveImages(context) }
+                        createCurrentThemePackage(context, ThemePackageOptions()).getOrThrow()
                     }
+                }.getOrNull()
+                // Applying copies every extracted image and rewrites the appearance settings.
+                // Keeping it off the main thread avoids an ANR while a large package is promoted.
+                val applied = runCatching {
+                    withContext(Dispatchers.IO) { applyImportedTheme(context, pending, options, clearFirst = true) }
                 }
-                pending.temporaryFiles().forEach { path ->
-                    runCatching { File(path).delete() }
-                }
-                _uiState.update {
-                    it.copy(
-                        pendingImportTheme = null,
-                        showThemeImportDialog = false,
-                        adaptiveThemeActive = false,
-                    )
-                }
-                val rolledBack = rollbackPackage != null && runCatching {
-                    withContext(NonCancellable + Dispatchers.IO) {
-                        val restored = ThemePackageStorage.import(context, Uri.fromFile(rollbackPackage))
-                            .getOrNull() ?: return@withContext false
-                        applyImportedTheme(context, restored, ThemePackageOptions())
+                if (applied.isFailure) {
+                    AdaptiveThemeStore.clear(repo)
+                    if (pending.isAdaptive) {
+                        withContext(Dispatchers.IO) {
+                            runCatching { ImageStorage.clearAdaptiveImages(context) }
+                        }
                     }
-                }.isSuccess
+                    pending.temporaryFiles().forEach { path ->
+                        runCatching { File(path).delete() }
+                    }
+                    _uiState.update {
+                        it.copy(adaptiveThemeActive = false)
+                    }
+                    val rolledBack = rollbackPackage != null && runCatching {
+                        withContext(NonCancellable + Dispatchers.IO) {
+                            val restored = ThemePackageStorage.import(context, Uri.fromFile(rollbackPackage))
+                                .getOrNull() ?: return@withContext false
+                            applyImportedTheme(context, restored, ThemePackageOptions())
+                        }
+                    }.isSuccess
+                    Toast.makeText(
+                        ksuApp,
+                        if (rolledBack) R.string.theme_import_failed_restored else R.string.theme_import_failed,
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    return@launch
+                }
+                // A normal import is a permanent choice; it supersedes any running trial.
+                ThemeTrialManager.clear(context)
+                Toast.makeText(ksuApp, R.string.theme_import_success, Toast.LENGTH_SHORT).show()
+            } finally {
                 rollbackPackage?.let { file -> runCatching { file.delete() } }
-                Toast.makeText(
-                    ksuApp,
-                    if (rolledBack) R.string.theme_import_failed_restored else R.string.theme_import_failed,
-                    Toast.LENGTH_LONG,
-                ).show()
-                return@launch
             }
-            rollbackPackage?.let { file -> runCatching { file.delete() } }
-            // A normal import is a permanent choice; it supersedes any running trial.
-            ThemeTrialManager.clear(context)
-            _uiState.update {
-                it.copy(
-                    pendingImportTheme = null,
-                    showThemeImportDialog = false,
-                )
-            }
-            Toast.makeText(ksuApp, R.string.theme_import_success, Toast.LENGTH_SHORT).show()
         }
     }
 
