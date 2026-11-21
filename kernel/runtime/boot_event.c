@@ -12,6 +12,7 @@ void on_post_fs_data(void)
 	pr_info("on_post_fs_data!\n");
 
 	ksu_load_allow_list();
+	ksu_dynamic_manager_load();
 
 	// Sanity check for safe mode only needs early-boot input samples.
 	ksu_stop_input_hook_runtime();
