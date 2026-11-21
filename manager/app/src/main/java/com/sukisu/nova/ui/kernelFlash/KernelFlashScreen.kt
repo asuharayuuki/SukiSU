@@ -2,6 +2,7 @@ package com.sukisu.nova.ui.kernelFlash
 
 import android.net.Uri
 import android.os.Environment
+import android.widget.Toast
 import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -124,14 +125,23 @@ fun KernelFlashScreen(
             }
         },
         onSaveLog = { logContentValue ->
-            scope.launch(Dispatchers.IO) {
-                val format = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.getDefault())
-                val date = format.format(Date())
-                val file = File(
-                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                    "SukiSU_Nova_kernel_flash_log_${date}.log"
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val format = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.getDefault())
+                        val date = format.format(Date())
+                        val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                        dir.mkdirs()
+                        val file = File(dir, "SukiSU_Nova_kernel_flash_log_${date}.log")
+                        file.writeText(logContentValue)
+                        file.absolutePath
+                    }
+                }
+                val message = result.fold(
+                    onSuccess = { path -> "Log saved to $path" },
+                    onFailure = { e -> "Failed to save log: ${e.message ?: e.javaClass.simpleName}" }
                 )
-                file.writeText(logContentValue)
+                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
             }
         },
         onReboot = {

@@ -72,7 +72,7 @@ fun ExecuteModuleActionScreen(moduleId: String, fromShortcut: Boolean = false) {
     )
     val actions = ExecuteModuleActionScreenActions(
         onBack = dropUnlessResumed { navigator.pop() },
-        onSaveLog = saveLog(logContent, scope) { showMessage(it) },
+        onSaveLog = saveLog(logContent, scope, fallbackText = text) { showMessage(it) },
         onClose = exitExecute,
     )
 

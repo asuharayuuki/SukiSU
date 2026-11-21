@@ -208,12 +208,15 @@ fun FlashEffect(
     onTextUpdate: (String) -> Unit,
     onShowRebootChange: (Boolean) -> Unit,
     onFlashingStatusChange: (FlashingStatus) -> Unit,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    hasStarted: Boolean = false,
+    onFlashStarted: () -> Unit = {},
 ) {
     LaunchedEffect(enabled) {
-        if (!enabled || text.isNotEmpty()) {
+        if (!enabled || hasStarted || text.isNotEmpty()) {
             return@LaunchedEffect
         }
+        onFlashStarted()
         var currentText = text
         val mainHandler = Handler(Looper.getMainLooper())
         withContext(Dispatchers.IO) {
@@ -227,9 +230,13 @@ fun FlashEffect(
                 mainHandler.post {
                     onTextUpdate(currentText)
                 }
-                logContent.append(it).append("\n")
+                synchronized(logContent) {
+                    logContent.append(it).append("\n")
+                }
             }, onStderr = {
-                logContent.append(it).append("\n")
+                synchronized(logContent) {
+                    logContent.append(it).append("\n")
+                }
             }).apply {
                 if (code != 0) {
                     currentText += "Error code: $code.\n $err Please save and check the log.\n"
@@ -255,18 +262,29 @@ fun FlashEffect(
 fun saveLog(
     logContent: StringBuilder,
     scope: CoroutineScope,
+    fallbackText: String = "",
     showMessage: (String) -> Unit
 ): () -> Unit {
     return {
         scope.launch {
-            val format = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.getDefault())
-            val date = format.format(Date())
-            val file = File(
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                "SukiSU_Nova_install_log_${date}.log"
+            val content = synchronized(logContent) {
+                if (logContent.isNotEmpty()) logContent.toString() else fallbackText
+            }
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val format = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.getDefault())
+                    val date = format.format(Date())
+                    val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    dir.mkdirs()
+                    val file = File(dir, "SukiSU_Nova_install_log_${date}.log")
+                    file.writeText(content)
+                    file.absolutePath
+                }
+            }
+            result.fold(
+                onSuccess = { path -> showMessage("Log saved to $path") },
+                onFailure = { e -> showMessage("Failed to save log: ${e.message ?: e.javaClass.simpleName}") }
             )
-            file.writeText(logContent.toString())
-            showMessage("Log saved to ${file.absolutePath}")
         }
     }
 }
