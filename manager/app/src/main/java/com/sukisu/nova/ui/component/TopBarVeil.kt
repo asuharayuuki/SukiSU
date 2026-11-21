@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import com.sukisu.nova.ui.theme.LocalAppBackgroundBackdrop
 import com.sukisu.nova.ui.theme.LocalBackgroundImagePath
 import com.sukisu.nova.ui.theme.LocalCardBackgroundAlpha
+import com.sukisu.nova.ui.theme.LocalDynamicWallpaperFrameBackdrop
 import com.sukisu.nova.ui.theme.LocalEnableProgressiveBlur
 import com.sukisu.nova.ui.theme.LocalTopBarBandProgress
 import com.sukisu.nova.ui.theme.LocalTopBarStyle
@@ -67,10 +68,11 @@ fun TopBarVeil(
     // band fading per frame without recomposing the bar. Pinned bars never publish, so they keep
     // the band fully visible.
     val bandProgress = LocalTopBarBandProgress.current
-    // A custom background needs the wallpaper layer to make the band sampleable. When it is
-    // missing (for example progressive blur was deliberately disabled over a dynamic WebView),
-    // fall back to the scrim instead of leaving the bar transparent.
+    // A custom background needs some wallpaper layer to make the band sampleable. When it is
+    // missing (for example no static capture and no dynamic frame yet), fall back to the scrim
+    // instead of leaving the bar transparent.
     val wallpaperSampleable = LocalAppBackgroundBackdrop.current != null ||
+        LocalDynamicWallpaperFrameBackdrop.current != null ||
         !hasCustomBackground
     val bandDrawn = blurActive && blurBackdrop != null && wallpaperSampleable
     val bandModifier = if (bandDrawn) {

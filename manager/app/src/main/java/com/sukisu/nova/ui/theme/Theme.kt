@@ -203,6 +203,16 @@ val LocalDynamicWallpaperActive = staticCompositionLocalOf { false }
  */
 val LocalAppBackgroundBackdrop = staticCompositionLocalOf<LayerBackdrop?> { null }
 
+/**
+ * A record-only backdrop holding the latest low-resolution frame of the dynamic wallpaper.
+ *
+ * A live WebView surface must never be captured into a Compose backdrop (vendor WebViews crash
+ * before the first frame), so the renderer exports small canvas snapshots instead. Bars stack
+ * this layer under their page layer exactly like [LocalAppBackgroundBackdrop]; null while no
+ * frame is available yet, in which case bars fall back to their tint.
+ */
+val LocalDynamicWallpaperFrameBackdrop = staticCompositionLocalOf<LayerBackdrop?> { null }
+
 val LocalCardBackgroundAlpha = staticCompositionLocalOf { 0.6f }
 
 @Composable

@@ -16,7 +16,11 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -27,6 +31,7 @@ import com.sukisu.nova.ui.theme.LocalAppSettings
 import com.sukisu.nova.ui.theme.MaterialExpressivePalette
 import com.sukisu.nova.ui.theme.LocalBackgroundImagePath
 import com.sukisu.nova.ui.theme.LocalDynamicWallpaperActive
+import com.sukisu.nova.ui.theme.LocalDynamicWallpaperFrameBackdrop
 import com.sukisu.nova.ui.theme.LocalCardBackgroundAlpha
 import com.sukisu.nova.ui.theme.appearanceImageEffects
 import java.io.File
@@ -56,6 +61,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -67,6 +73,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -84,6 +91,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 import com.sukisu.nova.Natives
 import com.sukisu.nova.ui.component.background.DynamicWallpaperBackground
 import com.sukisu.nova.ui.component.background.DynamicWallpaperFit
@@ -273,11 +281,51 @@ class MainActivity : ComponentActivity() {
             // Capture only a still custom background for the bar blur. A live WebView must never
             // enter a Compose backdrop layer: some MIUI/HyperOS WebViews crash while their surface
             // is recorded (before the first frame), and because the background is persisted the app
-            // restarts in a loop. With a dynamic wallpaper the bars fall back to their tint/scrim
-            // instead of frosting the video; the static-image case keeps the frosted bars.
+            // restarts in a loop. A dynamic wallpaper is handled through frame snapshots instead
+            // (see frameBackdropActive below), not through this capture.
             val captureAppBackground = uiState.customBackgroundUri.isNotEmpty() &&
                 !hasDynamicWallpaper &&
                 ((uiMode == UiMode.Miuix && uiState.enableBlur) || progressiveBlurActive)
+            // A live dynamic WebView can never enter a backdrop layer (vendor WebViews crash
+            // while their surface is recorded), so the renderer exports small frame snapshots.
+            // Bars sample those from a record-only layer that paints nothing on screen.
+            val frameBackdropActive = hasDynamicWallpaper &&
+                ((uiMode == UiMode.Miuix && uiState.enableBlur) || progressiveBlurActive)
+            val dynamicFrame = remember { mutableStateOf<ImageBitmap?>(null) }
+            val hasDynamicFrame by remember {
+                derivedStateOf { dynamicFrame.value != null }
+            }
+            val dynamicFrameScrim = when (val scrimPercent = uiState.customBackgroundScrimPercent) {
+                0 -> null
+                in Int.MIN_VALUE..-1 -> Color.Black.copy(alpha = -scrimPercent / 100f)
+                else -> Color.White.copy(alpha = scrimPercent / 100f)
+            }
+            val dynamicFrameScrimState = rememberUpdatedState(dynamicFrameScrim)
+            val dynamicFrameOnDraw = remember<ContentDrawScope.() -> Unit> {
+                {
+                    val frame = dynamicFrame.value
+                    val width = size.width.roundToInt()
+                    val height = size.height.roundToInt()
+                    if (frame != null && width > 0 && height > 0) {
+                        // The snapshot has the renderer canvas aspect (the full window), so
+                        // stretching it over the layer reproduces what sits behind the bars.
+                        drawImage(
+                            image = frame,
+                            dstSize = IntSize(width, height),
+                        )
+                        dynamicFrameScrimState.value?.let { scrim -> drawRect(scrim) }
+                    }
+                }
+            }
+            val dynamicFrameBackdrop = rememberLayerBackdrop(onDraw = dynamicFrameOnDraw)
+            // A replaced wallpaper must not keep showing the previous video's frozen frame.
+            LaunchedEffect(uiState.dynamicWallpaperPath, uiState.dynamicWallpaperUpdatedAt) {
+                dynamicFrame.value = null
+            }
+            // Re-enabling the blur must not reuse a frame captured minutes ago.
+            LaunchedEffect(frameBackdropActive) {
+                if (!frameBackdropActive) dynamicFrame.value = null
+            }
             val effectiveBackgroundPath = uiState.customBackgroundUri.ifEmpty {
                 uiState.dynamicWallpaperPath
             }
@@ -315,6 +363,9 @@ class MainActivity : ComponentActivity() {
                 LocalBackgroundImagePath provides effectiveBackgroundPath,
                 LocalDynamicWallpaperActive provides hasDynamicWallpaper,
                 LocalAppBackgroundBackdrop provides appBackgroundBackdrop.takeIf { captureAppBackground },
+                LocalDynamicWallpaperFrameBackdrop provides dynamicFrameBackdrop.takeIf {
+                    frameBackdropActive && hasDynamicFrame
+                },
                 LocalCardBackgroundAlpha provides (uiState.cardBackgroundAlphaPercent / 100f),
                 LocalUiMode provides uiMode,
                 LocalCustomTexts provides uiState.customTexts,
@@ -525,10 +576,30 @@ class MainActivity : ComponentActivity() {
                             ImageStorage.BACKGROUND_BLUR_MAX_RADIUS_DP * uiState.customBackgroundBlurPercent / 100f
                         ).dp
                         val backgroundEffects = themedAppSettings.appearance?.background
+                        // A dynamic video covers the still poster; skip its full-screen blur and
+                        // shader effects. They would only add GPU layers (and driver pressure)
+                        // underneath a live WebView, which is exactly what vendor WebViews are
+                        // fragile about. The dynamic renderer keeps its own blurPercent.
+                        val staticImageEffects = !hasDynamicWallpaper
                         Box(modifier = Modifier.fillMaxSize()) {
-                            // The static image and the dynamic WebView share one captured layer so
-                            // the bar blur and its progressive band can sample either wallpaper.
-                            // The scrim has to live inside that layer too: the bars sample it as the
+                            // Records the latest dynamic-wallpaper frame into a layer without
+                            // painting it here. Reading the frame in draw invalidates this node
+                            // whenever a new snapshot arrives, so the layer re-records offscreen.
+                            if (frameBackdropActive) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .drawWithContent {
+                                            dynamicFrame.value
+                                            dynamicFrameScrimState.value
+                                            drawContent()
+                                        }
+                                        .layerBackdrop(dynamicFrameBackdrop)
+                                )
+                            }
+                            // The still custom background can be recorded for the bar blur; a
+                            // dynamic wallpaper WebView must stay outside every recorded layer.
+                            // The scrim has to live inside this Box too: the bars sample it as the
                             // pixels behind them, so leaving it out makes the blurred edge far
                             // brighter than the darkened background it sits on.
                             Box(
@@ -561,7 +632,7 @@ class MainActivity : ComponentActivity() {
                                             modifier = Modifier
                                                 .fillMaxSize()
                                                 .then(
-                                                    if (backgroundBlurRadius > 0.dp) {
+                                                    if (staticImageEffects && backgroundBlurRadius > 0.dp) {
                                                         Modifier.blur(backgroundBlurRadius)
                                                     } else {
                                                         Modifier
@@ -570,8 +641,9 @@ class MainActivity : ComponentActivity() {
                                                 // Sharpen after a blur would just fight the blur, so only
                                                 // apply it while the background is unblurred.
                                                 .appearanceImageEffects(
-                                                    backgroundEffects,
-                                                    allowSharpen = backgroundBlurRadius <= 0.dp,
+                                                    if (staticImageEffects) backgroundEffects else null,
+                                                    allowSharpen = staticImageEffects &&
+                                                        backgroundBlurRadius <= 0.dp,
                                                 )
                                         )
                                     }
@@ -603,6 +675,11 @@ class MainActivity : ComponentActivity() {
                                             onError = { reason ->
                                                 android.util.Log.w("DynamicWallpaper", "background failed: $reason")
                                                 dynamicWallpaperFailed = true
+                                            },
+                                            onFrameSnapshot = if (frameBackdropActive) {
+                                                { frame -> dynamicFrame.value = frame.asImageBitmap() }
+                                            } else {
+                                                null
                                             },
                                         )
                                     }

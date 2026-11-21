@@ -59,6 +59,16 @@
   var DPR_CAP = 2.0;
   var IMAGE_FRAME_INTERVAL_MS = 33;
 
+  // Optional low-resolution frame snapshots. The host only needs a small copy of the last
+  // composed frame to use as a backdrop for its blur bars; sending the WebView surface itself
+  // crashes some vendor WebViews, so the pixels are exported from our own canvas instead.
+  var SNAPSHOT_ENABLED = false;
+  var SNAPSHOT_INTERVAL_MS = 100;
+  var SNAPSHOT_WIDTH = 128;
+  var lastSnapshotAt = 0;
+  var snapshotCanvas = null;
+  var snapshotCtx = null;
+
   var canvas = document.getElementById("canvas");
   var imageSource = document.getElementById("imageSource");
   var isVideo = MODE === "video";
@@ -218,6 +228,49 @@
     return true;
   }
 
+  function maybeSnapshot(now) {
+    if (!SNAPSHOT_ENABLED || failed || !sourceReady) return;
+    if (now - lastSnapshotAt < SNAPSHOT_INTERVAL_MS) return;
+    lastSnapshotAt = now;
+    var source = fallback2d ? fallback2d.canvas : (gl ? scratch : null);
+    if (!source || !source.width || !source.height) return;
+    var width = Math.min(SNAPSHOT_WIDTH, source.width);
+    var height = Math.max(1, Math.round(width * source.height / source.width));
+    try {
+      if (!snapshotCanvas) {
+        snapshotCanvas = document.createElement("canvas");
+        snapshotCtx = snapshotCanvas.getContext("2d", { alpha: true });
+        if (!snapshotCtx) return;
+      }
+      if (snapshotCanvas.width !== width || snapshotCanvas.height !== height) {
+        snapshotCanvas.width = width;
+        snapshotCanvas.height = height;
+      }
+      snapshotCtx.clearRect(0, 0, width, height);
+      snapshotCtx.drawImage(source, 0, 0, width, height);
+    } catch (_) {
+      return;
+    }
+    var url = null;
+    try {
+      url = snapshotCanvas.toDataURL("image/webp", 0.5);
+      if (url && url.indexOf("data:image/webp") !== 0) url = null;
+    } catch (_) {
+      url = null;
+    }
+    if (!url) {
+      try {
+        url = snapshotCanvas.toDataURL("image/png");
+      } catch (_) {
+        url = null;
+      }
+    }
+    if (!url) return;
+    try {
+      if (window.DWBridge && window.DWBridge.onFrame) window.DWBridge.onFrame(url);
+    } catch (_) {}
+  }
+
   function drawFrame() {
     if (!sourceReady) return;
     if (isVideo && (!video || video.readyState < 2 || video.videoWidth === 0)) return;
@@ -229,6 +282,7 @@
     if (fallback2d) {
       if (!drawSource(fallback2d, isVideo ? video : imageSource, canvas.width, canvas.height)) return;
       notifyReady();
+      maybeSnapshot(now);
       return;
     }
     if (!gl || !program || !texture) return;
@@ -248,7 +302,9 @@
         return;
       }
       bridgeError("webgl-draw: " + (error && error.message ? error.message : error));
+      return;
     }
+    maybeSnapshot(now);
   }
 
   function ensure2dFallback() {
@@ -380,11 +436,21 @@
     drawFrame();
   }
 
+  function setFrameSnapshots(enabled, intervalMs) {
+    SNAPSHOT_ENABLED = !!enabled;
+    var parsed = Number(intervalMs);
+    if (isFinite(parsed) && parsed > 0) {
+      SNAPSHOT_INTERVAL_MS = Math.max(40, Math.min(1000, parsed));
+    }
+    if (!SNAPSHOT_ENABLED) lastSnapshotAt = 0;
+  }
+
   window.DW = {
     setMuted: setMuted,
     setBlur: setBlur,
     setTransform: setTransform,
     setPlayback: setPlayback,
+    setFrameSnapshots: setFrameSnapshots,
     pause: function () { setHostPaused(true); },
     resume: function () { setHostPaused(false); }
   };

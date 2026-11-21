@@ -4,10 +4,13 @@ package com.sukisu.nova.ui.component.background
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Base64
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
@@ -48,6 +51,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TAG = "DynamicWallpaper"
 private const val BRIDGE_NAME = "DWBridge"
@@ -60,6 +65,10 @@ private const val BRIDGE_NAME = "DWBridge"
  * WebGL quad. The video element is never attached to the DOM, so no media overlay surface
  * can sit above Compose content. [onError] fires when the media or GPU renderer cannot start;
  * callers should fall back to the static poster in that case.
+ *
+ * [onFrameSnapshot] receives throttled, low-resolution copies of the composed frame. Hosts use
+ * them as a safe bitmap backdrop for blur bars: sampling the live WebView surface itself crashes
+ * some MIUI/HyperOS WebViews, while these frames were already drawn by our own canvas.
  */
 @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
 @Composable
@@ -72,6 +81,7 @@ fun DynamicWallpaperBackground(
     modifier: Modifier = Modifier,
     blurPercent: Int = 0,
     onError: (String) -> Unit = {},
+    onFrameSnapshot: ((Bitmap) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val kind = remember(context, path) {
@@ -121,8 +131,18 @@ fun DynamicWallpaperBackground(
     val fpsState = rememberUpdatedState(fps)
     val speedState = rememberUpdatedState(speed)
     val onErrorState = rememberUpdatedState(onError)
+    val onFrameSnapshotState = rememberUpdatedState(onFrameSnapshot)
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    val snapshotBusy = remember { AtomicBoolean(false) }
+    val snapshotExecutor = remember {
+        Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "dw-frame-snapshot").apply { isDaemon = true }
+        }
+    }
+    DisposableEffect(snapshotExecutor) {
+        onDispose { snapshotExecutor.shutdownNow() }
+    }
     val isVideo = kind == ImageStorage.DynamicWallpaperKind.MP4
 
     val bridge = remember {
@@ -130,20 +150,47 @@ fun DynamicWallpaperBackground(
             onReadyCallback = {
                 mainHandler.post {
                     val view = webViewRef.value ?: return@post
-                    view.evaluateJavascript(
-                        dynamicWallpaperStateScript(
-                            mutedState.value,
-                            blurState.value,
-                            transformState.value,
-                            fpsState.value,
-                            speedState.value,
-                        ),
-                        null,
-                    )
+                    runCatching {
+                        view.evaluateJavascript(
+                            dynamicWallpaperStateScript(
+                                mutedState.value,
+                                blurState.value,
+                                transformState.value,
+                                fpsState.value,
+                                speedState.value,
+                            ) + dynamicWallpaperSnapshotScript(
+                                onFrameSnapshotState.value != null,
+                            ),
+                            null,
+                        )
+                    }
                 }
             },
             onErrorCallback = { reason ->
                 mainHandler.post { onErrorState.value(reason) }
+            },
+            onFrameCallback = { dataUrl ->
+                // Decode off the JS bridge thread and keep at most one decode in flight. The
+                // page throttles itself; this only guards against a slow decoder falling behind.
+                if (onFrameSnapshotState.value != null &&
+                    snapshotBusy.compareAndSet(false, true)
+                ) {
+                    runCatching {
+                        snapshotExecutor.execute {
+                            val bitmap = decodeDynamicWallpaperFrame(dataUrl)
+                            snapshotBusy.set(false)
+                            if (bitmap != null) {
+                                mainHandler.post {
+                                    // A wallpaper swap disposes this renderer; never let its
+                                    // last in-flight frame overwrite the new one.
+                                    if (!snapshotExecutor.isShutdown) {
+                                        onFrameSnapshotState.value?.invoke(bitmap)
+                                    }
+                                }
+                            }
+                        }
+                    }.onFailure { snapshotBusy.set(false) }
+                }
             },
         )
     }
@@ -155,13 +202,17 @@ fun DynamicWallpaperBackground(
             when (event) {
                 Lifecycle.Event.ON_RESUME -> {
                     view.onResume()
-                    view.evaluateJavascript("window.DW && window.DW.resume();", null)
+                    runCatching {
+                        view.evaluateJavascript("window.DW && window.DW.resume();", null)
+                    }
                 }
                 Lifecycle.Event.ON_PAUSE -> {
                     // Let the page stop its video before the renderer is paused, otherwise
                     // playback (and audio) can outlive the visible window.
-                    view.evaluateJavascript("window.DW && window.DW.pause();") {
-                        view.onPause()
+                    runCatching {
+                        view.evaluateJavascript("window.DW && window.DW.pause();") {
+                            view.onPause()
+                        }
                     }
                 }
                 else -> Unit
@@ -172,50 +223,72 @@ fun DynamicWallpaperBackground(
     }
 
     key(path, kind) {
-        AndroidView(
+        AndroidView<View>(
             modifier = modifier,
             factory = { viewContext ->
-                // The page and the media share one loopback http origin, so the canvas is not
-                // tainted by the wallpaper frame and WebView's media stack gets normal URLs.
-                server.setPageHtml(
-                    buildDynamicWallpaperHtml(
-                        template = htmlTemplate,
-                        sourceUrl = mediaUrl,
-                        isVideo = isVideo,
-                        muted = mutedState.value,
-                        blur = blurState.value,
-                        transform = transformState.value,
-                        fps = fpsState.value,
-                        speed = speedState.value,
+                runCatching {
+                    // The page and the media share one loopback http origin, so the canvas is not
+                    // tainted by the wallpaper frame and WebView's media stack gets normal URLs.
+                    server.setPageHtml(
+                        buildDynamicWallpaperHtml(
+                            template = htmlTemplate,
+                            sourceUrl = mediaUrl,
+                            isVideo = isVideo,
+                            muted = mutedState.value,
+                            blur = blurState.value,
+                            transform = transformState.value,
+                            fps = fpsState.value,
+                            speed = speedState.value,
+                        )
                     )
-                )
-                createDynamicWallpaperWebView(
-                    context = viewContext,
-                    pageUrl = server.pageUrl,
-                    bridge = bridge,
-                    currentMuted = { mutedState.value },
-                    currentBlur = { blurState.value },
-                    currentTransform = { transformState.value },
-                    currentFps = { fpsState.value },
-                    currentSpeed = { speedState.value },
-                    onFailure = { reason -> onErrorState.value(reason) },
-                ).also { webViewRef.value = it }
+                    createDynamicWallpaperWebView(
+                        context = viewContext,
+                        pageUrl = server.pageUrl,
+                        bridge = bridge,
+                        currentMuted = { mutedState.value },
+                        currentBlur = { blurState.value },
+                        currentTransform = { transformState.value },
+                        currentFps = { fpsState.value },
+                        currentSpeed = { speedState.value },
+                        onFailure = { reason -> onErrorState.value(reason) },
+                    )
+                }.getOrElse { error ->
+                    // A missing or disabled WebView package must not take the app down; report
+                    // the failure so callers fall back to the static poster.
+                    Log.w(TAG, "dynamic wallpaper WebView could not be created", error)
+                    mainHandler.post {
+                        onErrorState.value(
+                            "webview-create: ${error.message ?: error.javaClass.simpleName}"
+                        )
+                    }
+                    View(viewContext)
+                }.also { view ->
+                    if (view is WebView) webViewRef.value = view
+                }
             },
             update = { view ->
-                view.evaluateJavascript(
-                    dynamicWallpaperStateScript(
-                        mutedState.value,
-                        blurState.value,
-                        transformState.value,
-                        fpsState.value,
-                        speedState.value,
-                    ),
-                    null,
-                )
+                if (view is WebView) {
+                    runCatching {
+                        view.evaluateJavascript(
+                            dynamicWallpaperStateScript(
+                                mutedState.value,
+                                blurState.value,
+                                transformState.value,
+                                fpsState.value,
+                                speedState.value,
+                            ) + dynamicWallpaperSnapshotScript(
+                                onFrameSnapshotState.value != null,
+                            ),
+                            null,
+                        )
+                    }
+                }
             },
             onRelease = { view ->
-                if (webViewRef.value === view) webViewRef.value = null
-                destroyDynamicWallpaperWebView(view)
+                if (view is WebView) {
+                    if (webViewRef.value === view) webViewRef.value = null
+                    destroyDynamicWallpaperWebView(view)
+                }
             },
         )
     }
@@ -224,6 +297,7 @@ fun DynamicWallpaperBackground(
 private class DynamicWallpaperBridge(
     private val onReadyCallback: () -> Unit,
     private val onErrorCallback: (String) -> Unit,
+    private val onFrameCallback: (String) -> Unit,
 ) {
     @JavascriptInterface
     fun onReady() {
@@ -234,7 +308,23 @@ private class DynamicWallpaperBridge(
     fun onError(reason: String) {
         onErrorCallback(reason)
     }
+
+    @JavascriptInterface
+    fun onFrame(dataUrl: String) {
+        onFrameCallback(dataUrl)
+    }
 }
+
+/** Decodes the page's small data-URL frame copy; null when the payload is not a valid image. */
+private fun decodeDynamicWallpaperFrame(dataUrl: String): Bitmap? = runCatching {
+    val separator = dataUrl.indexOf(',')
+    if (separator <= 0) {
+        null
+    } else {
+        val bytes = Base64.decode(dataUrl.substring(separator + 1), Base64.DEFAULT)
+        if (bytes.isEmpty()) null else BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    }
+}.getOrNull()
 
 @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
 private fun createDynamicWallpaperWebView(
@@ -352,16 +442,18 @@ private open class DynamicWallpaperWebViewClient(
     ): Boolean = true
 
     override fun onPageFinished(view: WebView, url: String) {
-        view.evaluateJavascript(
-            dynamicWallpaperStateScript(
-                currentMuted(),
-                currentBlur(),
-                currentTransform(),
-                currentFps(),
-                currentSpeed(),
-            ),
-            null,
-        )
+        runCatching {
+            view.evaluateJavascript(
+                dynamicWallpaperStateScript(
+                    currentMuted(),
+                    currentBlur(),
+                    currentTransform(),
+                    currentFps(),
+                    currentSpeed(),
+                ),
+                null,
+            )
+        }
     }
 
     override fun onReceivedError(
@@ -429,6 +521,9 @@ private fun dynamicWallpaperStateScript(
         "${String.format(Locale.US, "%.3f", geometry.offsetY)}" +
         "), window.DW.setPlayback($fps, ${String.format(Locale.US, "%.3f", speed)}));"
 }
+
+private fun dynamicWallpaperSnapshotScript(enabled: Boolean): String =
+    "window.DW && window.DW.setFrameSnapshots(${if (enabled) "true" else "false"});"
 
 private fun buildDynamicWallpaperHtml(
     template: String,

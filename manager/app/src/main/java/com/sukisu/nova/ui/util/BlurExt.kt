@@ -16,6 +16,7 @@ import com.sukisu.nova.ui.component.liquid.rememberCombinedBackdrop
 import com.sukisu.nova.ui.theme.LocalAppBackgroundBackdrop
 import com.sukisu.nova.ui.theme.LocalBackgroundImagePath
 import com.sukisu.nova.ui.theme.LocalCardBackgroundAlpha
+import com.sukisu.nova.ui.theme.LocalDynamicWallpaperFrameBackdrop
 import com.sukisu.nova.ui.theme.LocalEnableProgressiveBlur
 import com.sukisu.nova.ui.theme.LocalTopBarBandProgress
 import com.sukisu.nova.ui.theme.LocalTopBarStyle
@@ -94,6 +95,14 @@ fun rememberBlurBackdrop(
  */
 @Composable
 fun rememberBackdropWithAppBackground(backdrop: Backdrop?): Backdrop? {
+    // A dynamic wallpaper can never be captured live; its renderer exports frame snapshots as a
+    // record-only layer instead. Use that in place of the still-image capture whenever present.
+    // The page layer stays mandatory: without it the caller has already decided there is no
+    // usable blur (unsupported effect or blur switched off).
+    val dynamicFrame = LocalDynamicWallpaperFrameBackdrop.current
+    if (dynamicFrame != null && backdrop != null) {
+        return rememberCombinedBackdrop(dynamicFrame, backdrop)
+    }
     if (backdrop == null) return null
     val appBackground = LocalAppBackgroundBackdrop.current
     if (appBackground != null) return rememberCombinedBackdrop(appBackground, backdrop)
