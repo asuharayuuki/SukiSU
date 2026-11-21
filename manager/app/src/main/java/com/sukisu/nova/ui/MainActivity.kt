@@ -385,9 +385,12 @@ class MainActivity : ComponentActivity() {
                     var flashBackEnabled by remember(flashRoute) { mutableStateOf(false) }
                     val scriptRunRoute = navigator.current() as? Route.ScriptRun
                     var scriptRunBackEnabled by remember(scriptRunRoute) { mutableStateOf(true) }
+                    val kernelFlashRoute = navigator.current() as? Route.KernelFlash
+                    var kernelFlashBackEnabled by remember(kernelFlashRoute) { mutableStateOf(false) }
                     // Read here, not inside the NavDisplay builder: NavDisplay only rebuilds its entries
                     // (and their swipeDismiss) when the builder lambda changes, so it must capture the value.
                     val scriptRunSwipeDismiss = if (scriptRunBackEnabled) swipeDismiss else NavSwipeDirection.None
+                    val kernelFlashSwipeDismiss = if (kernelFlashBackEnabled) swipeDismiss else NavSwipeDirection.None
                     val mainScreenEntry = @Composable {
                         MainScreen(
                             initialPage = selectedMainPage,
@@ -499,12 +502,15 @@ class MainActivity : ComponentActivity() {
                             entry<Route.SuperUser>(swipeDismiss = swipeDismiss) { mainScreenEntry() }
                             entry<Route.Module>(swipeDismiss = swipeDismiss) { mainScreenEntry() }
                             entry<Route.Settings>(swipeDismiss = swipeDismiss) { mainScreenEntry() }
-                            entry<Route.KernelFlash>(swipeDismiss = swipeDismiss)  { key ->
+                            entry<Route.KernelFlash>(swipeDismiss = kernelFlashSwipeDismiss)  { key ->
                                     KernelFlashScreen(
                                         key.kernelUri,
                                         key.selectedSlot,
                                         key.kpmPatchEnabled,
-                                        key.kpmUndoPatch
+                                        key.kpmUndoPatch,
+                                        onBackEnabledChange = { enabled ->
+                                            if (navigator.current() == key) kernelFlashBackEnabled = enabled
+                                        },
                                     )
                                 }
                                 entry<Route.Kpm>(swipeDismiss = swipeDismiss)  { KpmScreen() }

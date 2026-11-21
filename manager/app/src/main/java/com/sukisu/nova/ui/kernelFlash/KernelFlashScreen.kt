@@ -2,13 +2,19 @@ package com.sukisu.nova.ui.kernelFlash
 
 import android.net.Uri
 import android.os.Environment
+import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import com.sukisu.nova.R
 import com.sukisu.nova.ui.LocalUiMode
 import com.sukisu.nova.ui.UiMode
@@ -31,10 +37,12 @@ fun KernelFlashScreen(
     kernelUri: Uri,
     selectedSlot: String? = null,
     kpmPatchEnabled: Boolean = false,
-    kpmUndoPatch: Boolean = false
+    kpmUndoPatch: Boolean = false,
+    onBackEnabledChange: (Boolean) -> Unit = {},
 ) {
     val navigator = LocalNavigator.current
     val context = LocalContext.current
+    val activity = LocalActivity.current
     val resources = LocalResources.current
     val scope = rememberCoroutineScope()
 
@@ -57,6 +65,24 @@ fun KernelFlashScreen(
     }
 
     val flashState by horizonKernelState.state.collectAsStateWithLifecycle()
+    val backEnabled = !flashState.isFlashing
+
+    SideEffect { onBackEnabledChange(backEnabled) }
+    NavigationBackHandler(
+        state = rememberNavigationEventState(NavigationEventInfo.None),
+        isBackEnabled = !backEnabled,
+        onBackCompleted = {},
+    )
+    DisposableEffect(horizonKernelState) {
+        onDispose {
+            if (activity?.isChangingConfigurations != true) {
+                val current = horizonKernelState.state.value
+                if (current.isCompleted || current.error.isNotEmpty()) {
+                    KernelFlashStateHolder.clear()
+                }
+            }
+        }
+    }
 
     val flashComplete = stringResource(R.string.horizon_flash_complete)
 

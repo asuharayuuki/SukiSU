@@ -33,6 +33,8 @@ import com.sukisu.nova.data.repository.isAutoDeleteModuleZipEnabled
 import com.sukisu.nova.ui.util.FlashResult
 import com.sukisu.nova.ui.util.LkmSelection
 import com.sukisu.nova.ui.util.downloadBoot
+import com.sukisu.nova.ksuApp
+import com.sukisu.nova.ui.navigation3.deleteExternalZipCache
 import com.sukisu.nova.ui.util.flashModule
 import com.sukisu.nova.ui.util.installBoot
 import com.sukisu.nova.ui.util.patchKpmBoot
@@ -127,15 +129,19 @@ fun flashModulesSequentially(
     deleteInstalledZips: Boolean = false,
 ): FlashResult {
     var needsReboot = false
-    for (uri in uris) {
-        flashModule(uri, onStdout, onStderr, deleteSourceOnSuccess = deleteInstalledZips).apply {
-            needsReboot = needsReboot || showReboot
-            if (code != 0) {
-                return FlashResult(code, err, needsReboot)
+    try {
+        for (uri in uris) {
+            flashModule(uri, onStdout, onStderr, deleteSourceOnSuccess = deleteInstalledZips).apply {
+                needsReboot = needsReboot || showReboot
+                if (code != 0) {
+                    return FlashResult(code, err, needsReboot)
+                }
             }
         }
+        return FlashResult(0, "", needsReboot)
+    } finally {
+        uris.forEach { deleteExternalZipCache(ksuApp, it) }
     }
-    return FlashResult(0, "", needsReboot)
 }
 
 fun flashIt(
@@ -184,7 +190,7 @@ fun flashIt(
                 uris = flashIt.uris,
                 onStdout = onStdout,
                 onStderr = onStderr,
-                deleteInstalledZips = isAutoDeleteModuleZipEnabled(),
+                deleteInstalledZips = isAutoDeleteModuleZipEnabled() && !flashIt.fromExternalIntent,
             )
         }
 
