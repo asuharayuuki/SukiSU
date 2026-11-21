@@ -1,5 +1,6 @@
 package com.sukisu.nova.data.repository
 
+import com.sukisu.nova.data.model.ThemeStoreCnbUpload
 import com.sukisu.nova.data.model.ThemeStoreUploadAck
 import com.sukisu.nova.data.model.ThemeStoreUploadComplete
 import com.sukisu.nova.data.model.ThemeStoreUploadInitRequest
@@ -144,6 +145,20 @@ internal class ThemeStoreResumableUploader(
         .callTimeout(10, TimeUnit.MINUTES)
         .build()
     private val edge = sharedEdgeClient
+
+    /**
+     * CNB's presigned PUT URL is a plain object-storage write: no cookies, no
+     * bearer token, no chunk protocol. One request carries the whole package,
+     * which is why the site's uplink is no longer in the path.
+     */
+    private val direct = OkHttpClient.Builder()
+        .protocols(listOf(Protocol.HTTP_1_1))
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .writeTimeout(120, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .callTimeout(45, TimeUnit.MINUTES)
+        .retryOnConnectionFailure(false)
+        .build()
     private val scheduler = Routes()
 
     private class RouteHealth {
@@ -207,7 +222,23 @@ internal class ThemeStoreResumableUploader(
             else -> throw IOException("Unsupported upload file type")
         }
         if (!file.isFile || size !in 1L..limit) throw IOException("Invalid upload file size")
-        val session = init(file, size)
+        val packageLane = file.extension.equals("sukisu", ignoreCase = true)
+        var session = init(file, size, if (packageLane) "cnb" else null)
+        val cnb = session.cnb
+        if (packageLane && cnb != null) {
+            if (cnb.confirmed) {
+                // A previous attempt already landed on CNB; just report it.
+                onTransferred(size, size)
+                return ThemeStoreUploadedFile(session.uploadId, true)
+            }
+            if (ID.matches(session.uploadId) && directUpload(file, session.uploadId, cnb, onTransferred)) {
+                onTransferred(size, size)
+                return ThemeStoreUploadedFile(session.uploadId, true)
+            }
+            // Direct upload failed (expired URL, blocked network, CNB outage).
+            // Reuse the same session on the chunked lane instead of restarting.
+            session = init(file, size, "chunked")
+        }
         val chunkSize = session.chunkSize
         if (!session.ok || !ID.matches(session.uploadId) || chunkSize !in MIB..8L * MIB ||
             session.size != size || session.totalChunks != (size + chunkSize - 1) / chunkSize) {
@@ -325,7 +356,7 @@ internal class ThemeStoreResumableUploader(
                 transfer(missing, onlyPrimary = true)
                 result = complete(session.uploadId)
             }
-            val merged = result ?: throw IOException("Upload merge failed")
+            val merged = result
             if (!merged.complete || merged.missing.isNotEmpty()) {
                 throw IOException("Upload merge is incomplete")
             }
@@ -334,13 +365,90 @@ internal class ThemeStoreResumableUploader(
         return ThemeStoreUploadedFile(session.uploadId, session.uploadTargets != null)
     }
 
+    /**
+     * PUT the package straight to CNB, then let the site confirm and pull it
+     * back. Returns false on any transport or confirmation failure so the caller
+     * can resume on the ordinary chunked lane without losing the session.
+     */
+    private suspend fun directUpload(
+        file: File,
+        uploadId: String,
+        target: ThemeStoreCnbUpload,
+        onTransferred: (Long, Long) -> Unit,
+    ): Boolean {
+        val url = target.uploadUrl.toHttpUrlOrNull() ?: return false
+        if (url.scheme != "https" || url.username.isNotEmpty() || url.password.isNotEmpty() ||
+            url.fragment != null) return false
+        val size = file.length()
+        var last: Exception? = null
+        repeat(2) {
+            currentCoroutineContext().ensureActive()
+            try {
+                var reported = 0L
+                val body = object : RequestBody() {
+                    override fun contentType() = CHUNK_MEDIA
+                    override fun contentLength() = size
+                    override fun writeTo(sink: BufferedSink) {
+                        RandomAccessFile(file, "r").use { source ->
+                            val buffer = ByteArray(256 * 1024)
+                            var written = 0L
+                            while (written < size) {
+                                if (Thread.currentThread().isInterrupted) {
+                                    throw IOException("Upload interrupted")
+                                }
+                                val read = source.read(buffer, 0, minOf(size - written, buffer.size.toLong()).toInt())
+                                if (read <= 0) throw IOException("Unexpected end of upload file")
+                                sink.write(buffer, 0, read)
+                                written += read
+                                val now = System.nanoTime()
+                                if (now - reported >= 120_000_000L) {
+                                    reported = now
+                                    onTransferred(written, size)
+                                }
+                            }
+                            sink.flush()
+                            onTransferred(size, size)
+                        }
+                    }
+                }
+                val request = Request.Builder()
+                    .url(url)
+                    .put(body)
+                    .header("Content-Type", "application/octet-stream")
+                    .build()
+                executeThemeUpload(direct, request) { response ->
+                    // Drain the (normally empty) body before the status check so a
+                    // rejected request still frees the connection cleanly.
+                    runCatching { response.uploadJson() }
+                    if (!response.isSuccessful) {
+                        throw ThemeUploadHttpException(
+                            response.code,
+                            "CNB direct upload rejected (${response.code})",
+                        )
+                    }
+                }
+                val result = complete(uploadId)
+                if (result.complete) return true
+                last = IOException("CNB upload was not confirmed")
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: ThemeStoreUnauthorizedException) {
+                throw error
+            } catch (error: Exception) {
+                last = error
+            }
+        }
+        android.util.Log.w("ThemeStoreUpload", "CNB direct upload failed", last)
+        return false
+    }
+
     private fun accountRequest(path: String) = Request.Builder()
         .url(base + "account/api/uploads/" + path)
         .header("Authorization", "Bearer $bearerToken")
         .header("X-Requested-With", "SukiSUThemeAdmin")
         .header("X-Client", "android")
 
-    private suspend fun init(file: File, size: Long): ThemeStoreUploadSession {
+    private suspend fun init(file: File, size: Long, lane: String?): ThemeStoreUploadSession {
         // Larger packages use 8 MB chunks: the per-request overhead (authorization,
         // receipt check, fsync, ack) otherwise dominates on slow links and makes the
         // displayed speed oscillate. Images stay on 2 MB so their tail is short.
@@ -354,6 +462,7 @@ internal class ThemeStoreResumableUploader(
             size = size,
             fingerprint = "${file.name}:$size:${file.lastModified()}",
             chunkSize = chunkSize,
+            lane = lane,
         )).toRequestBody(JSON_MEDIA)
         return executeThemeUpload(primary, accountRequest("init").post(body).build()) { response ->
             if (response.code == 401) throw ThemeStoreUnauthorizedException()
