@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Refresh the bare mirrors of the Rust git dependencies.
 #
-#   bash .github/ci/mirror-git-deps.sh [output-dir]
+#   bash .github/image/mirror-git-deps.sh [output-dir]
 #
 # Runs on a machine that can reach github.com (this one cannot from inside WSL:
 # the tunnel resolves github.com to ::1 and only proxies a fixed domain list).

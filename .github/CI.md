@@ -4,6 +4,27 @@ These workflows run on a Forgejo Actions runner inside WSL on a Windows host, wi
 no access to `github.com`. Every `uses:` that pointed at a marketplace action has
 been replaced with a plain `run:` step.
 
+## Where the CI files live
+
+Everything under `.github/` is executed by the CI itself. The two exceptions are
+`image/` and the host scripts, whose headers say where to run them.
+
+```
+.github/
+├── workflows/       one stage per file, each dispatchable on its own
+├── image/           the CI image definitions (docker build on the runner host)
+├── scripts/ci/      shell libraries sourced inside a job (common.sh, cnb.sh, parallel.sh)
+├── scripts/         upload-telegram.sh (inlined as base64 by publish/release),
+│                    setup-rust-build.sh
+├── riscv64-cargo.toml
+├── CI.md            this file
+└── CI-TEMPLATE.md   template for writing a new workflow (Chinese)
+```
+
+Tools that are never run by CI live outside, in `scripts/`: `scripts/dev/` for the
+developer machine, `scripts/host/` for the runner host. Neither is referenced by a
+workflow, so editing them cannot break a build.
+
 ## Workflow layout
 
 Each stage is its own workflow, so any of them can be dispatched alone:
@@ -17,6 +38,7 @@ Each stage is its own workflow, so any of them can be dispatched alone:
 | `publish.yml` | — | rolling `manager-ci` (main) / `manager-dev` (dev) build and Telegram upload, one job |
 | `release.yml` | — | orchestrates the stages, then assembles `/ci/runs/<id>/release` |
 | `shellcheck.yml`, `clippy.yml`, `clang-format.yml`, `rustfmt.yml` | — | lint jobs |
+| `validate.yml` | — | `forgejo-runner validate` on the workflow files, plus a check that every helper the workflows source still exists |
 
 `manager.yml` and `publish.yml` take `artifacts_run=<id>`, which seeds this run's
 artifact directory from an earlier run. That makes repackaging take minutes
@@ -24,7 +46,7 @@ instead of rebuilding the native chain.
 
 ## One image for everything
 
-`.github/ci/Dockerfile` builds `sukisu-ci:<tag>` from `catthehacker/ubuntu` and
+`.github/image/Dockerfile` builds `sukisu-ci:<tag>` from `catthehacker/ubuntu` and
 bakes in JDK 21, the Android SDK (`platforms;android-37.0`,
 `build-tools;37.0.0`, `cmake;3.22.1`, `cmake;3.31.6`), NDK `29.0.14206865`,
 `libclang-21-dev`, Gradle 9.7.1, stable Rust with clippy/rustfmt plus the Android
@@ -37,7 +59,7 @@ work is the build itself.
 
 ```bash
 # on the runner host (WSL), from the repository root
-bash .github/ci/build-image.sh 6
+bash .github/image/build-image.sh 6
 ```
 
 Then point the runner at it:
@@ -75,7 +97,7 @@ only proxies a fixed domain list), and `services.gradle.org` redirects to
 `github.com`. Nothing in the pipeline may depend on them:
 
 - **Rust git dependencies** — seven crates come from git on `github.com`.
-  `.github/ci/mirror-git-deps.sh` mirrors them into `/srv/forgejo-ci/git-mirrors`
+  `.github/image/mirror-git-deps.sh` mirrors them into `/srv/forgejo-ci/git-mirrors`
   with the revisions `Cargo.lock` pins tagged, the image bakes them in, and
   `git url.<mirror>.insteadOf` plus `cargo net.git-fetch-with-cli` redirect the
   fetches.
@@ -97,7 +119,7 @@ so artifacts move through these places, tried in this order by
 1. **`/ci` volume** — `/ci/runs/<run_id>/<artifact>/`, written by
    `ci_artifact_put`. Free, but only exists on the host that produced the file.
 2. **EasyTier peer** — each runner serves `/ci/runs` on port 18080
-   (`scripts/ci/artifact-server.sh`), so the other host can fetch the same tree.
+   (`scripts/host/artifact-server.sh`), so the other host can fetch the same tree.
    Flat files only: the manifest fetch rejects any entry containing `/`.
 3. **CNB** — every artifact is also archived as `<name>.tar.gz` on the CNB
    release `ci-<run_id>` of `CNB_REPO` (default `shirkneko/sukisu-result`). This

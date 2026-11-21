@@ -408,7 +408,7 @@ jobs:
           if [ -z "$changes_url" ]; then
             changes_url="https://git.zako.shirkneko.top:20004/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
           fi
-          telegram_script_b64="$(base64 -w0 scripts/upload-telegram.sh)"
+          telegram_script_b64="$(base64 -w0 .github/scripts/upload-telegram.sh)"
           payload="$(jq -nc --arg tag "$CNB_TAG" --arg kind "$CNB_KIND" \
             --arg thread "$thread" --arg bot "$BOT_TOKEN" --arg chat "$CHAT_ID" \
             --arg api "$TG_API_BASE" --arg title "$TITLE" --arg branch "$BRANCH" \
@@ -471,5 +471,5 @@ jobs:
             exit 0
           fi
 
-          bash scripts/upload-telegram.sh "${APKS[@]}"
+          bash .github/scripts/upload-telegram.sh "${APKS[@]}"
           date -u +%FT%TZ >"$marker"

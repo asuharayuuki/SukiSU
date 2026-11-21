@@ -241,7 +241,7 @@ ci_download_artifact() {
 	fi
 
 	# Runner-to-runner transfer over the LAN. Each runner serves /ci/runs on
-	# port 18080 (scripts/ci/artifact-server.sh).
+	# port 18080 (scripts/host/artifact-server.sh).
 	local peers="${CI_ARTIFACT_PEERS:-192.168.11.2 192.168.11.3}"
 	local host manifest files file ok
 	manifest="$(mktemp)"

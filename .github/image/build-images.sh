@@ -3,7 +3,7 @@
 # access, keeping the same OS: everything is derived from the image that is
 # already on the host.
 #
-#   bash .github/ci/build-images.sh [source-image] [tag]
+#   bash .github/image/build-images.sh [source-image] [tag]
 #
 #   forgejo-ci/base:<tag>     the old rootfs minus the big toolchain dirs
 #   forgejo-ci/android:<tag>  base + Android SDK, NDK 27/29, cmake, Gradle, kpm
