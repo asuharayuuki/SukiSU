@@ -14,7 +14,7 @@ Each stage is its own workflow, so any of them can be dispatched alone:
 | `ksud.yml` | `ksud` | all four targets by default, subset via `targets=` |
 | `ksuinit.yml` | `ksuinit` | |
 | `manager.yml` | the manager APK | build + repack/sign (no spoofed variant) |
-| `publish.yml` | — | rolling `manager-ci` build and Telegram upload, one job |
+| `publish.yml` | — | rolling `manager-ci` (main) / `manager-dev` (dev) build and Telegram upload, one job |
 | `release.yml` | — | orchestrates the stages, then assembles `/ci/runs/<id>/release` |
 | `shellcheck.yml`, `clippy.yml`, `clang-format.yml`, `rustfmt.yml` | — | lint jobs |
 
@@ -66,7 +66,7 @@ one, so a running job keeps the image it started with.
 | `actions/setup-java`, `android-actions/setup-android`, `nttld/setup-ndk`, `Swatinem/rust-cache` | baked into the image; each job runs a `Check toolchain` step |
 | `actions/upload-artifact`, `actions/download-artifact` | `ci_artifact_put` / `ci_download_artifact` from `.github/scripts/ci/common.sh`; CNB is the storage and the cross-runner transport, and summaries link to it |
 | `softprops/action-gh-release` | files collected under `${CI_ARTIFACT_ROOT}/release` |
-| `gh release` publishing | split APKs copied to `${CI_ARTIFACT_ROOT}/manager-ci/<sha>` |
+| `gh release` publishing | split APKs copied to `${CI_ARTIFACT_ROOT}/manager-<channel>/<sha>` and uploaded to the matching CNB release |
 
 ## Things this network cannot reach
 
@@ -123,7 +123,8 @@ works, and the masker no longer matches.
 /ci/repo-cache/                bare mirror per repository, shared by all jobs
 /ci/runs/<run_id>/<artifact>/  per-run artifacts (+ manifest.json)
 /ci/runs/<run_id>/release/     packaged release files
-/ci/runs/<run_id>/manager-ci/  rolling CI APKs
+/ci/runs/<run_id>/manager-ci/   rolling main APKs
+/ci/runs/<run_id>/manager-dev/  rolling dev APKs
 /ci/tools/cargo/               cargo registry + git cache
 /ci/tools/gradle/              Gradle user home
 ```
@@ -142,8 +143,15 @@ runs.
 Signing uses repository **variables** (`KEYSTORE` as base64, `KEY_ALIAS`,
 `KEYSTORE_PASSWORD`, `KEY_PASSWORD`) with the same names accepted as secrets.
 Telegram upload reads `BOT_TOKEN` and `CHAT_ID`, plus `MESSAGE_THREAD_ID` for
-normal builds and `MESSAGE_RELEASES_THREAD_ID` for releases; it is skipped when
-`BOT_TOKEN` or `CHAT_ID` is empty. Only the single Manager variant is published.
+normal and dev builds (`MESSAGE_DEV_THREAD_ID` overrides it on dev) and
+`MESSAGE_RELEASES_THREAD_ID` for releases; it is skipped when `BOT_TOKEN` or
+`CHAT_ID` is empty. Only the single Manager variant is published.
+
+Rolling channels: main publishes `manager-ci` (the tag the manager's CI updater
+reads) and dev publishes `manager-dev`. Both are CNB prereleases, so a dev push
+never replaces the build main was tested with and neither enters the stable
+update channel; a dispatch from any other ref signs nothing and publishes
+nothing.
 
 CNB needs `CNB_TOKEN` (release read/write); `CNB_REPO` is an optional variable
 (default `shirkneko/sukisu-result`). Publishing back to Forgejo uses

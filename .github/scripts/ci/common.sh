@@ -401,3 +401,42 @@ ci_summary_artifacts() {
 		fi
 	} >> "$summary"
 }
+
+# ci_summary_release TITLE TAG PATH...
+#   Job Summary for a rolling channel: one row per file with its CNB download URL
+#   on release TAG. cnb-upload.sh writes the same TAG, so the links resolve as
+#   soon as the upload step finished. Without a token the table stays and the note
+#   says where the files really are.
+ci_summary_release() {
+	local title="$1" tag="$2"
+	shift 2
+	local summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
+	[ -n "$summary" ] || return 0
+	local base="" file name size
+	if cnb_enabled; then
+		base="$(ci_cnb_link_base)/-/releases/download/${tag}"
+	fi
+	{
+		echo "## ${title}"
+		echo
+		if [ -n "$base" ]; then
+			echo "| 文件 | 大小 | 下载 |"
+			echo "| --- | --- | --- |"
+			for file in "$@"; do
+				name="$(basename "$file")"
+				size="$(du -h "$file" 2>/dev/null | cut -f1)"
+				echo "| \`${name}\` | ${size:-?} | [下载](${base}/${name}) |"
+			done
+			echo
+			echo "> 分支 \`${GITHUB_REF_NAME:-unknown}\` · 提交 \`${GITHUB_SHA:-unknown}\` · 已签名，可直接覆盖安装。"
+		else
+			echo "| 文件 |"
+			echo "| --- |"
+			for file in "$@"; do
+				echo "| \`$(basename "$file")\` |"
+			done
+			echo
+			echo "> 没有 CNB token，产物只留在 runner 的 \`/ci\` 上。"
+		fi
+	} >> "$summary"
+}

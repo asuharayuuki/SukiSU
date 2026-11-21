@@ -6,10 +6,16 @@ name: Validate workflows
 
 on:
   workflow_dispatch:
+  # Only the two long-lived branches build. A scratch branch is created to be
+  # pushed and thrown away, so a validation run there costs a runner slot and
+  # tells nobody anything: the same files get validated when the branch is
+  # opened as a pull request against main/dev.
   push:
+    branches: [ "main", "dev" ]
     paths:
       - '.github/workflows/**'
   pull_request:
+    branches: [ "main", "dev" ]
     paths:
       - '.github/workflows/**'
 

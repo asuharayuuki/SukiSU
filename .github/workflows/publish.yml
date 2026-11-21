@@ -1,8 +1,12 @@
 name: Publish Manager
 
-# Publishes the repacked APKs: the rolling `manager-ci` build on main and the
-# Telegram upload. Both used to be separate jobs doing the same split-and-sign
-# work twice, so they are one job now.
+# Publishes the repacked APKs: a rolling `manager-ci` build on main, a
+# `manager-dev` build on dev, and the Telegram upload. Both used to be separate
+# jobs doing the same split-and-sign work twice, so they are one job now.
+#
+# The channel is what keeps the two branches apart: main keeps the tag the
+# manager's CI updater reads, dev gets its own prerelease, and neither overwrites
+# the other's APKs. Any other ref signs nothing and publishes nothing.
 on:
   workflow_dispatch:
     inputs:
@@ -71,6 +75,33 @@ jobs:
           set -eux
           apksigner --version
           python3 --version
+
+      # One channel per branch. main owns `manager-ci` because the manager's CI
+      # updater reads that tag; a dev push must never replace the build main was
+      # tested with, so dev gets `manager-dev`. Both are prereleases, which keeps
+      # them out of the stable update channel.
+      #
+      # A dispatch from any other ref publishes nothing: it would otherwise
+      # create a release tag per topic branch.
+      - name: Resolve the release channel
+        id: channel
+        run: |
+          set -eu
+          case "${GITHUB_REF_NAME}" in
+            main) channel=ci; title="Manager CI" ;;
+            dev) channel=dev; title="Manager Dev" ;;
+            *)
+              echo "branch ${GITHUB_REF_NAME:-?} has no release channel; keeping the APKs on /ci"
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+          {
+            echo "publish=true"
+            echo "tag=manager-${channel}"
+            echo "title=${title}"
+          } >> "$GITHUB_OUTPUT"
+          echo "release channel: manager-${channel} (${title})"
 
       - name: Provide node and the action sources
         run: |
@@ -141,18 +172,20 @@ jobs:
             unzip -l "$split" | grep ' lib/' | awk -F/ '{print $2}' | sort -u
           done
 
-      - name: Publish rolling CI build
-        if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
+      - name: Publish rolling build on /ci
+        if: ${{ inputs.publish && steps.channel.outputs.publish == 'true' }}
         run: |
           set -eux
           . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           test -n "$(find apks/split -type f -name '*.apk' -print -quit)"
-          published="${CI_ARTIFACT_ROOT}/manager-ci/${GITHUB_SHA}"
+          tag='${{ steps.channel.outputs.tag }}'
+          title='${{ steps.channel.outputs.title }}'
+          published="${CI_ARTIFACT_ROOT}/${tag}/${GITHUB_SHA}"
           mkdir -p "$published"
           cp -f apks/split/*.apk "$published"/
           {
-            printf '## Manager CI\n\n'
-            printf -- '- **Branch:** `main`\n'
+            printf '## %s\n\n' "$title"
+            printf -- '- **Branch:** `%s`\n' "$GITHUB_REF_NAME"
             printf -- '- **Commit:** `%s`\n' "$GITHUB_SHA"
             printf -- '- **Build:** %s\n\n' "${GITHUB_RUN_NUMBER:-unknown}"
             printf '> Experimental build; may be unstable.\n\n### Recent changes\n\n'
@@ -164,12 +197,12 @@ jobs:
       # from cnb.cool and the upload goes machine-to-machine, so the tunnel to
       # this host only ever sees small API calls. Every later step works from
       # what CNB holds.
-      - name: Upload signed manager CI to CNB
-        if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
+      - name: Upload the signed manager to CNB
+        if: ${{ inputs.publish && steps.channel.outputs.publish == 'true' }}
         env:
           CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
           CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
-          CNB_TAG: manager-ci
+          CNB_TAG: ${{ steps.channel.outputs.tag }}
           CNB_ASSETS_DIR: apks/split
           CNB_BODY_FILE: cnb-notes.md
           CNB_PRERELEASE: "true"
@@ -177,22 +210,40 @@ jobs:
           CNB_TARGET_COMMITISH: ${{ vars.CNB_TARGET_COMMITISH || 'main' }}
         run: |
           set -eu
+          tag='${{ steps.channel.outputs.tag }}'
+          title='${{ steps.channel.outputs.title }}'
           apk="$(find apks/split -type f -name '*.apk' | head -n1)"
           code="${apk##*_}"
           code="${code%%-*}"
-          export CNB_NAME="Manager CI (${code})"
+          export CNB_NAME="${title} (${code})"
           {
-            echo "# Manager CI (${code})"
+            echo "# ${title} (${code})"
             echo
-            echo "- Commit: `${GITHUB_SHA}`"
-            echo "- Branch: `${GITHUB_REF_NAME}`"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Branch: \`${GITHUB_REF_NAME}\`"
             echo "- Run: ${GITHUB_RUN_NUMBER:-unknown}"
             echo
             echo "## Recent changes"
             echo
             git log -20 --format='- %s (`%h`)'
           } > cnb-notes.md
+          echo "uploading to CNB release ${tag}"
           bash .github/scripts/ci/cnb-upload.sh
+
+      # The summary is written right after the upload: the links are only valid
+      # once CNB holds the files, and a later step failing must not hide them.
+      - name: Write the job summary
+        if: ${{ inputs.publish && steps.channel.outputs.publish == 'true' }}
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
+        run: |
+          set -eux
+          . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
+          ci_summary_release \
+            "${{ steps.channel.outputs.title }}" \
+            "${{ steps.channel.outputs.tag }}" \
+            apks/split/*.apk
 
       # The APKs stay on CNB: pushing them into the release here means ~43 MB
       # through the tunnel at ~90 KB/s, which never finished. The Forgejo release
@@ -200,15 +251,17 @@ jobs:
       #
       # Consequence: the manager's Forgejo update source has no APK to offer for
       # this tag; its CNB source (the default) does.
-      - name: Point the manager-ci release at CNB
-        if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
+      - name: Point the release at CNB
+        if: ${{ inputs.publish && steps.channel.outputs.publish == 'true' }}
         env:
           # Dedicated token with write:repository. The built-in GITHUB_TOKEN is
           # only a fallback: it may lack release permissions on this instance.
           API_TOKEN: ${{ secrets.RELEASE_API_TOKEN || vars.RELEASE_API_TOKEN || secrets.GITHUB_TOKEN }}
           CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
-          CNB_TAG: manager-ci
+          CNB_TAG: ${{ steps.channel.outputs.tag }}
           CNB_WEB: ${{ vars.CNB_WEB || 'https://cnb.cool' }}
+          RELEASE_TAG: ${{ steps.channel.outputs.tag }}
+          RELEASE_TITLE: ${{ steps.channel.outputs.title }}
         run: |
           set -eu
           # GITHUB_SERVER_URL is the EasyTier address (http://100.0.0.11:3000),
@@ -217,8 +270,9 @@ jobs:
           site="${FORGEJO_PUBLIC_URL:-https://git.zako.shirkneko.top:20004}"
           api="${site}/api/v1/repos/${GITHUB_REPOSITORY}"
           auth="Authorization: token ${API_TOKEN}"
-          tag=manager-ci
-          echo "api=${api} token_len=${#API_TOKEN}"
+          tag="${RELEASE_TAG:?}"
+          title="${RELEASE_TITLE:?}"
+          echo "api=${api} token_len=${#API_TOKEN} tag=${tag}"
 
           net() {
             curl -sS --retry 5 --retry-all-errors --retry-delay 2 \
@@ -241,11 +295,12 @@ jobs:
           case "$code" in
             '' | *[!0-9]*) echo "cannot parse the version code from ${base}" >&2; exit 1 ;;
           esac
+          name="${title} (${code})"
 
           # One link, not a table: the CNB release page lists every split, and
           # this release stores no bytes any more.
-          body="$(printf 'Rolling CI build from main. Experimental; may be unstable.\n\n下载 / Download: %s/%s/-/releases/tag/%s\n' \
-            "$CNB_WEB" "$CNB_REPO" "$CNB_TAG")"
+          body="$(printf 'Rolling %s build from %s. Experimental; may be unstable.\n\n下载 / Download: %s/%s/-/releases/tag/%s\n' \
+            "$title" "$GITHUB_REF_NAME" "$CNB_WEB" "$CNB_REPO" "$tag")"
 
           release="$api/releases/tags/$tag"
           status="$(curl -sS --connect-timeout 10 --max-time 60 -o /tmp/release.json \
@@ -254,9 +309,9 @@ jobs:
           if [ "$status" = "200" ]; then
             id="$(jq -r '.id' /tmp/release.json)"
           else
-            payload="$(jq -nc --arg sha "$GITHUB_SHA" --arg name "Manager CI (${code})" \
+            payload="$(jq -nc --arg tag "$tag" --arg sha "$GITHUB_SHA" --arg name "$name" \
               --arg body "$body" \
-              '{tag_name: "manager-ci", target_commitish: $sha, name: $name, prerelease: true,
+              '{tag_name: $tag, target_commitish: $sha, name: $name, prerelease: true,
                 body: $body}')"
             net_once -X POST -H "$auth" -H 'Content-Type: application/json' \
               -d "$payload" "$api/releases" -o /tmp/release.json \
@@ -275,9 +330,9 @@ jobs:
             net -f -X DELETE -H "$auth" "$api/releases/${id}/assets/$asset_id" >/dev/null
           done
 
-          payload="$(jq -nc --arg sha "$GITHUB_SHA" --arg name "Manager CI (${code})" \
+          payload="$(jq -nc --arg tag "$tag" --arg sha "$GITHUB_SHA" --arg name "$name" \
             --arg body "$body" \
-            '{tag_name: "manager-ci", target_commitish: $sha, name: $name,
+            '{tag_name: $tag, target_commitish: $sha, name: $name,
               prerelease: true, body: $body}')"
           net -f -X PATCH -H "$auth" -H 'Content-Type: application/json' \
             -d "$payload" "$api/releases/${id}" >/dev/null
@@ -288,8 +343,8 @@ jobs:
             "$api/releases/tags/${tag}" -o /tmp/release-title.json
           actual="$(jq -r '.name // ""' /tmp/release-title.json)"
           left="$(jq -r '.assets | length' /tmp/release-title.json)"
-          test "$actual" = "Manager CI (${code})" || {
-            echo "release title mismatch: got '${actual}', expected 'Manager CI (${code})'" >&2
+          test "$actual" = "$name" || {
+            echo "release title mismatch: got '${actual}', expected '${name}'" >&2
             exit 1
           }
           test "$left" = "0" || {
@@ -298,50 +353,9 @@ jobs:
           }
           echo "release ${tag} updated: ${actual}; APKs live on CNB only"
 
-      - name: Trigger CNB Telegram delivery
-        if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
-        env:
-          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
-          CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
-          CNB_TAG: manager-ci
-          CNB_KIND: manager
-          THREAD_ID: ${{ vars.MESSAGE_THREAD_ID || '' }}
-          BOT_TOKEN: ${{ vars.BOT_TOKEN || secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ vars.CHAT_ID || secrets.CHAT_ID }}
-          TG_API_BASE: ${{ vars.TG_API_BASE || 'https://api.telegram.org' }}
-          TITLE: Manager
-          BRANCH: ${{ github.ref_name }}
-          RUN_URL: https://git.zako.shirkneko.top:20004/${{ github.repository }}/actions/runs/${{ github.run_number || github.run_id }}
-          EVENT: ${{ toJson(github.event) }}
-        run: |
-          set -eu
-          if [ -z "${CNB_TOKEN:-}" ]; then
-            echo "CNB_TOKEN is not configured; skipping CNB Telegram trigger"
-            exit 0
-          fi
-          version="$(git rev-list --count HEAD 2>/dev/null || true)"
-          commit_text="$(git log -1 --format='%s by %an' 2>/dev/null | cut -c1-400)"
-          changes_url="$(printf '%s' "${EVENT:-}" | jq -r '.compare // .head_commit.url // empty' 2>/dev/null || true)"
-          if [ -z "$changes_url" ]; then
-            changes_url="https://git.zako.shirkneko.top:20004/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
-          fi
-          telegram_script_b64="$(base64 -w0 scripts/upload-telegram.sh)"
-          payload="$(jq -nc --arg tag "$CNB_TAG" --arg kind "$CNB_KIND" \
-            --arg thread "$THREAD_ID" --arg bot "$BOT_TOKEN" --arg chat "$CHAT_ID" \
-            --arg api "$TG_API_BASE" --arg title "$TITLE" --arg branch "$BRANCH" \
-            --arg version "$version" --arg commit "$commit_text" \
-            --arg run "$RUN_URL" --arg changes "$changes_url" \
-            --arg script "$telegram_script_b64" \
-            '{event:"api_trigger_telegram",env:{TAG:$tag,KIND:$kind,THREAD_ID:$thread,TG_BOT_TOKEN:$bot,TG_CHAT_ID:$chat,TG_API_BASE:$api,TITLE:$title,BRANCH:$branch,VERSION:$version,COMMIT_TEXT:$commit,RUN_URL:$run,CHANGES_URL:$changes,TELEGRAM_SCRIPT_B64:$script}}')"
-          curl -fsS --retry 3 --retry-all-errors -X POST \
-            -H "Authorization: Bearer ${CNB_TOKEN}" \
-            -H 'Accept: application/json' \
-            -H 'Content-Type: application/json' \
-            -d "$payload" \
-            "https://api.cnb.cool/${CNB_REPO}/-/build/start" >/dev/null
-          echo "triggered CNB Telegram delivery"
-
-      # Secrets cannot be used inside `if:`; a step turns them into an output.
+      # Secrets cannot be used inside `if:`; a step turns them into an output, and
+      # the CNB trigger below reads it so a repository without Telegram tokens
+      # never fires a pipeline that has nothing to send.
       - name: Check Telegram configuration
         id: telegram
         env:
@@ -357,7 +371,62 @@ jobs:
           fi
 
       # Telegram delivery is delegated to CNB so a local network failure cannot
-      # break the build. The CNB pipeline is triggered after the CNB upload.
+      # break the build. The CNB pipeline downloads the APKs from the channel's
+      # release, so this runs on main and dev alike; only the tag differs.
+      #
+      # MESSAGE_DEV_THREAD_ID keeps dev drops out of the main topic when it is
+      # set, and falls back to MESSAGE_THREAD_ID when it is not.
+      - name: Trigger CNB Telegram delivery
+        if: ${{ inputs.publish && steps.channel.outputs.publish == 'true' && steps.telegram.outputs.upload == 'true' }}
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-result' }}
+          CNB_TAG: ${{ steps.channel.outputs.tag }}
+          CNB_KIND: manager
+          THREAD_ID: ${{ vars.MESSAGE_THREAD_ID || '' }}
+          DEV_THREAD_ID: ${{ vars.MESSAGE_DEV_THREAD_ID || '' }}
+          BOT_TOKEN: ${{ vars.BOT_TOKEN || secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ vars.CHAT_ID || secrets.CHAT_ID }}
+          TG_API_BASE: ${{ vars.TG_API_BASE || 'https://api.telegram.org' }}
+          TITLE: ${{ steps.channel.outputs.title }}
+          BRANCH: ${{ github.ref_name }}
+          RUN_URL: https://git.zako.shirkneko.top:20004/${{ github.repository }}/actions/runs/${{ github.run_number || github.run_id }}
+          EVENT: ${{ toJson(github.event) }}
+        run: |
+          set -eu
+          if [ -z "${CNB_TOKEN:-}" ]; then
+            echo "CNB_TOKEN is not configured; skipping CNB Telegram trigger"
+            exit 0
+          fi
+          thread="${THREAD_ID:-}"
+          if [ "${GITHUB_REF_NAME}" = "dev" ] && [ -n "${DEV_THREAD_ID:-}" ]; then
+            thread="$DEV_THREAD_ID"
+          fi
+          version="$(git rev-list --count HEAD 2>/dev/null || true)"
+          commit_text="$(git log -1 --format='%s by %an' 2>/dev/null | cut -c1-400)"
+          changes_url="$(printf '%s' "${EVENT:-}" | jq -r '.compare // .head_commit.url // empty' 2>/dev/null || true)"
+          if [ -z "$changes_url" ]; then
+            changes_url="https://git.zako.shirkneko.top:20004/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
+          fi
+          telegram_script_b64="$(base64 -w0 scripts/upload-telegram.sh)"
+          payload="$(jq -nc --arg tag "$CNB_TAG" --arg kind "$CNB_KIND" \
+            --arg thread "$thread" --arg bot "$BOT_TOKEN" --arg chat "$CHAT_ID" \
+            --arg api "$TG_API_BASE" --arg title "$TITLE" --arg branch "$BRANCH" \
+            --arg version "$version" --arg commit "$commit_text" \
+            --arg run "$RUN_URL" --arg changes "$changes_url" \
+            --arg script "$telegram_script_b64" \
+            '{event:"api_trigger_telegram",env:{TAG:$tag,KIND:$kind,THREAD_ID:$thread,TG_BOT_TOKEN:$bot,TG_CHAT_ID:$chat,TG_API_BASE:$api,TITLE:$title,BRANCH:$branch,VERSION:$version,COMMIT_TEXT:$commit,RUN_URL:$run,CHANGES_URL:$changes,TELEGRAM_SCRIPT_B64:$script}}')"
+          curl -fsS --retry 3 --retry-all-errors -X POST \
+            -H "Authorization: Bearer ${CNB_TOKEN}" \
+            -H 'Accept: application/json' \
+            -H 'Content-Type: application/json' \
+            -d "$payload" \
+            "https://api.cnb.cool/${CNB_REPO}/-/build/start" >/dev/null
+          echo "triggered CNB Telegram delivery for ${CNB_TAG} (thread ${thread:-default})"
+
+      # Manual fallback only: if CNB cannot run the delivery, drop the `if: false`
+      # below and the same split APKs go out directly. It stays off because a
+      # flaky tunnel used to fail the whole job here.
       - name: Upload to Telegram (legacy, disabled)
         if: ${{ false }}
         timeout-minutes: 20
