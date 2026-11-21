@@ -209,7 +209,7 @@ private suspend fun handleConfirmed(
     }
 
     if (cachedUris.isNotEmpty()) {
-        navigator.push(Route.Flash(FlashIt.FlashModules(cachedUris)))
+        navigator.push(Route.Flash(FlashIt.FlashModules(cachedUris, fromExternalIntent = true)))
     } else {
         Toast.makeText(context, strings.zipFileUnknown, Toast.LENGTH_SHORT).show()
     }

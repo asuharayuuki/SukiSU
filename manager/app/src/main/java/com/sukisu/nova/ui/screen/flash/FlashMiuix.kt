@@ -1,6 +1,7 @@
 package com.sukisu.nova.ui.screen.flash
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -71,6 +72,13 @@ fun FlashScreenMiuix(
 ) {
     val enableBlur = LocalEnableBlur.current
     val scrollState = rememberScrollState()
+    LaunchedEffect(scrollState.interactionSource, actions.onUserInteraction) {
+        scrollState.interactionSource.interactions.collect { interaction ->
+            if (interaction is DragInteraction.Start) {
+                actions.onUserInteraction()
+            }
+        }
+    }
     val backdrop = rememberBlurBackdrop(enableBlur)
     val blurActive = backdrop != null
     val hasCustomBackground = LocalBackgroundImagePath.current.isNotEmpty()

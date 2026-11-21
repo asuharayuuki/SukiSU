@@ -1,5 +1,6 @@
 package com.sukisu.nova.ui.screen.flash
 
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -58,6 +59,13 @@ fun FlashScreenMaterial(
     snackBarHost: SnackbarHostState,
 ) {
     val scrollState = rememberScrollState()
+    LaunchedEffect(scrollState.interactionSource, actions.onUserInteraction) {
+        scrollState.interactionSource.interactions.collect { interaction ->
+            if (interaction is DragInteraction.Start) {
+                actions.onUserInteraction()
+            }
+        }
+    }
     if (state.showJailbreakWarning) {
         JailbreakFlashWarningDialog(
             onConfirm = actions.onConfirmJailbreakWarning,

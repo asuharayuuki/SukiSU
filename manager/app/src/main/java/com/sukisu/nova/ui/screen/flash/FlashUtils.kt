@@ -108,7 +108,10 @@ sealed class FlashIt : Parcelable {
     data class PatchKpmBoot(val boot: Uri? = null, val undo: Boolean = false) : FlashIt()
 
     @Parcelize
-    data class FlashModules(val uris: List<Uri>) : FlashIt()
+    data class FlashModules(
+        val uris: List<Uri>,
+        val fromExternalIntent: Boolean = false,
+    ) : FlashIt()
 
     @Parcelize
     data object FlashRestore : FlashIt()

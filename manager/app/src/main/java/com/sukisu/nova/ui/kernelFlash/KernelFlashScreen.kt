@@ -1,9 +1,7 @@
 package com.sukisu.nova.ui.kernelFlash
 
-import android.content.Intent
 import android.net.Uri
 import android.os.Environment
-import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,7 +17,6 @@ import com.sukisu.nova.ui.kernelFlash.state.HorizonKernelWorker
 import com.sukisu.nova.ui.navigation3.LocalNavigator
 import com.sukisu.nova.ui.util.reboot
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -28,7 +25,6 @@ import java.util.Date
 import java.util.Locale
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun KernelFlashScreen(
@@ -41,7 +37,6 @@ fun KernelFlashScreen(
     val context = LocalContext.current
     val resources = LocalResources.current
     val scope = rememberCoroutineScope()
-    val activity = LocalActivity.current
 
     val horizonKernelState = remember(kernelUri, selectedSlot, kpmPatchEnabled, kpmUndoPatch) {
         if (KernelFlashStateHolder.currentState != null &&
@@ -72,23 +67,6 @@ fun KernelFlashScreen(
                 append("\n${flashState.error}\n")
             } else if (flashState.isCompleted) {
                 append("\n$flashComplete\n")
-            }
-        }
-    }
-
-    LaunchedEffect(flashState.isCompleted, flashState.error) {
-        if (flashState.isCompleted && flashState.error.isEmpty()) {
-            val intent = activity?.intent
-            val isFromExternalIntent = intent?.action?.let { action ->
-                action == Intent.ACTION_VIEW ||
-                action == Intent.ACTION_SEND ||
-                action == Intent.ACTION_SEND_MULTIPLE
-            } ?: false
-
-            if (isFromExternalIntent) {
-                delay(1500.milliseconds)
-                KernelFlashStateHolder.clear()
-                activity.finish()
             }
         }
     }
