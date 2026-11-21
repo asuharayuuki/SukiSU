@@ -170,6 +170,12 @@ class TopBarBandProgressState {
 
 val LocalTopBarBandProgress = staticCompositionLocalOf { TopBarBandProgressState() }
 
+/**
+ * Fade the floating top bar control backgrounds in as the page scrolls. When off, the round
+ * control backgrounds stay fully visible at rest.
+ */
+val LocalTopBarPillFade = staticCompositionLocalOf { true }
+
 val LocalEnableFloatingBottomBar = staticCompositionLocalOf { false }
 
 val LocalEnableFloatingBottomBarBlur = staticCompositionLocalOf { false }

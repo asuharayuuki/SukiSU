@@ -549,6 +549,10 @@ class SettingsRepositoryImpl : SettingsRepository {
         get() = prefs.getInt("top_bar_style", 0).coerceIn(0, 2)
         set(value) = prefs.edit { putInt("top_bar_style", value.coerceIn(0, 2)) }
 
+    override var topBarPillFade: Boolean
+        get() = prefs.getBoolean("top_bar_pill_fade", true)
+        set(value) = prefs.edit { putBoolean("top_bar_pill_fade", value) }
+
     override var enableNavigationBadge: Boolean
         get() = prefs.getBoolean("enable_navigation_badge", true)
         set(value) = prefs.edit { putBoolean("enable_navigation_badge", value) }

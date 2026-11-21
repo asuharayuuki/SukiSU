@@ -19,6 +19,7 @@ import com.sukisu.nova.ui.theme.LocalBackgroundImagePath
 import com.sukisu.nova.ui.theme.LocalEnableBlur
 import com.sukisu.nova.ui.theme.LocalEnableProgressiveBlur
 import com.sukisu.nova.ui.theme.LocalTopBarBandProgress
+import com.sukisu.nova.ui.theme.LocalTopBarPillFade
 import com.sukisu.nova.ui.theme.LocalTopBarStyle
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar as MiuixSmallTopAppBar
@@ -280,18 +281,28 @@ private fun FloatingMiuixLargeTopAppBar(
  * show their circles fully.
  */
 @Composable
-private fun rememberFloatingPillVisibility(scrollBehavior: ScrollBehavior?): () -> Float =
-    remember(scrollBehavior) {
+private fun rememberFloatingPillVisibility(scrollBehavior: ScrollBehavior?): () -> Float {
+    val fade = LocalTopBarPillFade.current
+    return remember(scrollBehavior, fade) {
         {
-            val state = scrollBehavior?.state
-            when {
-                state == null -> 0.7f
-                state.heightOffsetLimit != 0f ->
-                    0.7f + 0.3f * (state.collapsedFraction * 3f).coerceIn(0f, 1f)
-                else -> 1f
+            if (!fade) {
+                // The switch keeps the control backgrounds fully visible at rest.
+                1f
+            } else {
+                val state = scrollBehavior?.state
+                when {
+                    // Without a collapsing bar there is nothing to fade against; pinned small bars
+                    // must keep their circles visible.
+                    state == null -> 1f
+                    state.heightOffsetLimit == 0f -> 1f
+                    // The backgrounds appear only while the page scrolls under the bar: hidden at
+                    // rest, fully drawn by 1/3 of the collapse.
+                    else -> (state.collapsedFraction * 3f).coerceIn(0f, 1f)
+                }
             }
         }
     }
+}
 
 /**
  * A floating bar can only afford a transparent surface when the page actually paints something

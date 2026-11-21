@@ -1188,6 +1188,8 @@
     <string name="settings_top_bar_style_standard">標準</string>
     <string name="settings_top_bar_style_floating">懸浮</string>
     <string name="settings_top_bar_style_floating_glass">懸浮玻璃</string>
+    <string name="settings_top_bar_pill_fade">按鈕背景隨捲動淡入</string>
+    <string name="settings_top_bar_pill_fade_summary">開啟後按鈕背景在頁面捲動時才會完全顯現；關閉後始終顯示。</string>
     <string name="theme_category_top_bar">頂欄</string>
     <string name="settings_section_interaction">互動與手勢</string>
     <string name="settings_section_interaction_summary">預測性返回、滑動關閉、翻頁手勢與頁面縮放</string>

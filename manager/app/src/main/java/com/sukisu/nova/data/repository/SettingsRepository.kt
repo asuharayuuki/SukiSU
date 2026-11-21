@@ -134,6 +134,8 @@ interface SettingsRepository {
     var enableFloatingBottomBarBlur: Boolean
     /** [com.sukisu.nova.ui.theme.TopBarStyle] value: standard, floating or floating glass. */
     var topBarStyle: Int
+    /** Fade the floating top bar control backgrounds in while the page scrolls. */
+    var topBarPillFade: Boolean
     var enableNavigationBadge: Boolean
     var navigationRailExpanded: Boolean
     var pageScale: Float

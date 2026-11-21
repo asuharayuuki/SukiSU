@@ -66,6 +66,7 @@ fun ColorPaletteScreen(section: String? = null, importUri: String? = null) {
         onSetEnableFloatingBottomBar = viewModel::setEnableFloatingBottomBar,
         onSetEnableFloatingBottomBarBlur = viewModel::setEnableFloatingBottomBarBlur,
         onSetTopBarStyle = viewModel::setTopBarStyle,
+        onSetTopBarPillFade = viewModel::setTopBarPillFade,
         onSetEnableNavigationBadge = viewModel::setEnableNavigationBadge,
         onSetEnablePredictiveBack = {
             viewModel.setEnablePredictiveBack(it)

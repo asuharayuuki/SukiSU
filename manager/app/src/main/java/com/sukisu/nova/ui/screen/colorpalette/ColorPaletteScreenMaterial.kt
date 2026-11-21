@@ -1667,6 +1667,15 @@ fun ColorPaletteScreenMaterial(
                             onItemSelected = actions.onSetTopBarStyle,
                         )
                     }
+                    item(visible = true) {
+                        SegmentedSwitchItem(
+                            icon = Icons.Rounded.Opacity,
+                            title = stringResource(R.string.settings_top_bar_pill_fade),
+                            summary = stringResource(R.string.settings_top_bar_pill_fade_summary),
+                            checked = state.topBarPillFade,
+                            onCheckedChange = actions.onSetTopBarPillFade,
+                        )
+                    }
                 }
             }
             }

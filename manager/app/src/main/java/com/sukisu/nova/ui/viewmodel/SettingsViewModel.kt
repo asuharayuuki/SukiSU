@@ -102,6 +102,7 @@ class SettingsViewModel(
         interactionSectionExpanded = repo.interactionSectionExpanded,
         detailsSectionExpanded = repo.detailsSectionExpanded,
         topBarStyle = repo.topBarStyle,
+        topBarPillFade = repo.topBarPillFade,
         customHomeTitle = repo.customHomeTitle,
         customTexts = repo.customTexts,
         themeStoreBaseUrl = repo.themeStoreBaseUrl,
@@ -187,6 +188,7 @@ class SettingsViewModel(
             val enableFloatingBottomBar = repo.enableFloatingBottomBar
             val enableFloatingBottomBarBlur = repo.enableFloatingBottomBarBlur
             val topBarStyle = repo.topBarStyle
+            val topBarPillFade = repo.topBarPillFade
             val enableNavigationBadge = repo.enableNavigationBadge
             val pageScale = repo.pageScale
             val bottomBarIcons = repo.bottomBarIcons
@@ -315,6 +317,7 @@ homePillScale = HomeStatusStyle.coercePillScale(repo.homePillScale),
                     enableFloatingBottomBar = enableFloatingBottomBar,
                     enableFloatingBottomBarBlur = enableFloatingBottomBarBlur,
                     topBarStyle = topBarStyle,
+                    topBarPillFade = topBarPillFade,
                     enableNavigationBadge = enableNavigationBadge,
                     pageScale = pageScale,
                     moduleDescriptionMaxLines = moduleDescriptionMaxLines,
@@ -1273,6 +1276,7 @@ homeStatusAlignment = HomeStatusAlignment.fromValue(repo.homeStatusAlignment).va
             enableFloatingBottomBar = repo.enableFloatingBottomBar.takeIf { options.interfaceSwitches },
             enableFloatingBottomBarBlur = repo.enableFloatingBottomBarBlur.takeIf { options.interfaceSwitches },
             topBarStyle = repo.topBarStyle.takeIf { options.interfaceSwitches },
+            topBarPillFade = repo.topBarPillFade.takeIf { options.interfaceSwitches },
             enableNavigationBadge = repo.enableNavigationBadge.takeIf { options.interfaceSwitches },
             enablePredictiveBack = repo.enablePredictiveBack.takeIf { options.interactionBehavior },
             enableSwipeDismiss = repo.enableSwipeDismiss.takeIf { options.interactionBehavior },
@@ -1440,6 +1444,7 @@ homePillScale = if (options.homeCardDisplay) source.homePillScale else null,
                 null
             },
             topBarStyle = if (options.interfaceSwitches) repo.topBarStyle else null,
+            topBarPillFade = if (options.interfaceSwitches) repo.topBarPillFade else null,
             enableNavigationBadge = if (options.interfaceSwitches) {
                 repo.enableNavigationBadge
             } else {
@@ -1813,6 +1818,7 @@ homePillScale = if (options.homeCardDisplay) source.homePillScale else null,
             repo.enableFloatingBottomBar = false
             repo.enableFloatingBottomBarBlur = false
             repo.topBarStyle = 0
+            repo.topBarPillFade = true
             repo.enableNavigationBadge = true
             updated = updated.copy(
                 enableBlur = false,
@@ -1820,6 +1826,7 @@ homePillScale = if (options.homeCardDisplay) source.homePillScale else null,
                 enableFloatingBottomBar = false,
                 enableFloatingBottomBarBlur = false,
                 topBarStyle = 0,
+                topBarPillFade = true,
                 enableNavigationBadge = true,
             )
         }
@@ -1894,6 +1901,7 @@ homePillScale = if (options.homeCardDisplay) source.homePillScale else null,
                 enableFloatingBottomBar = null,
                 enableFloatingBottomBarBlur = null,
                 topBarStyle = null,
+                topBarPillFade = null,
                 enableNavigationBadge = null,
                 enablePredictiveBack = null,
                 enableSwipeDismiss = null,
@@ -1997,6 +2005,7 @@ homePillScale = if (options.homeCardDisplay) source.homePillScale else null,
         var floatingBottomBar = current.enableFloatingBottomBar
         var floatingBottomBarBlur = current.enableFloatingBottomBarBlur
         var topBarStyle = current.topBarStyle
+        var topBarPillFade = current.topBarPillFade
         var navigationBadge = current.enableNavigationBadge
         var predictiveBack = repo.enablePredictiveBack
         var swipeDismiss = repo.enableSwipeDismiss
@@ -2018,10 +2027,12 @@ homePillScale = if (options.homeCardDisplay) source.homePillScale else null,
             floatingBottomBar = data.enableFloatingBottomBar ?: current.enableFloatingBottomBar
             floatingBottomBarBlur = data.enableFloatingBottomBarBlur ?: current.enableFloatingBottomBarBlur
             topBarStyle = data.topBarStyle?.coerceIn(0, 2) ?: current.topBarStyle
+            topBarPillFade = data.topBarPillFade ?: current.topBarPillFade
             navigationBadge = data.enableNavigationBadge ?: current.enableNavigationBadge
             repo.enableFloatingBottomBar = floatingBottomBar
             repo.enableFloatingBottomBarBlur = floatingBottomBarBlur
             repo.topBarStyle = topBarStyle
+            repo.topBarPillFade = topBarPillFade
             repo.enableNavigationBadge = navigationBadge
         }
 
@@ -2301,6 +2312,7 @@ homePillScale = if (options.homeCardDisplay) source.homePillScale else null,
             floatingBottomBar = repo.enableFloatingBottomBar
             floatingBottomBarBlur = repo.enableFloatingBottomBarBlur
             topBarStyle = repo.topBarStyle
+            topBarPillFade = repo.topBarPillFade
             navigationBadge = repo.enableNavigationBadge
             predictiveBack = repo.enablePredictiveBack
             swipeDismiss = repo.enableSwipeDismiss
@@ -2372,6 +2384,7 @@ homePillScale = HomeStatusStyle.coercePillScale(repo.homePillScale),
                 enableFloatingBottomBar = floatingBottomBar,
                 enableFloatingBottomBarBlur = floatingBottomBarBlur,
                 topBarStyle = topBarStyle,
+                topBarPillFade = topBarPillFade,
                 enableNavigationBadge = navigationBadge,
                 enablePredictiveBack = predictiveBack,
                 enableSwipeDismiss = swipeDismiss,
@@ -2548,6 +2561,11 @@ homePillScale = if (options.homeCardDisplay) variant.data.homePillScale else nul
                     null
                 },
                 topBarStyle = if (options.interfaceSwitches) variant.data.topBarStyle else null,
+                topBarPillFade = if (options.interfaceSwitches) {
+                    variant.data.topBarPillFade
+                } else {
+                    null
+                },
                 enableNavigationBadge = if (options.interfaceSwitches) {
                     variant.data.enableNavigationBadge
                 } else {
@@ -2640,6 +2658,7 @@ homePillScale = if (options.homeCardDisplay) variant.data.homePillScale else nul
                     enableFloatingBottomBar = repo.enableFloatingBottomBar,
                     enableFloatingBottomBarBlur = repo.enableFloatingBottomBarBlur,
                     topBarStyle = repo.topBarStyle,
+                    topBarPillFade = repo.topBarPillFade,
                     enableNavigationBadge = repo.enableNavigationBadge,
                     enablePredictiveBack = repo.enablePredictiveBack,
                     enableSwipeDismiss = repo.enableSwipeDismiss,
@@ -3040,6 +3059,7 @@ homePillScale = repo.homePillScale,
                     enableFloatingBottomBar = repo.enableFloatingBottomBar,
                     enableFloatingBottomBarBlur = repo.enableFloatingBottomBarBlur,
                     topBarStyle = repo.topBarStyle,
+                    topBarPillFade = repo.topBarPillFade,
                     enableNavigationBadge = repo.enableNavigationBadge,
                     enablePredictiveBack = repo.enablePredictiveBack,
                     enableSwipeDismiss = repo.enableSwipeDismiss,
@@ -3512,6 +3532,11 @@ homePillScale = repo.homePillScale,
         _uiState.update { it.copy(topBarStyle = coerced) }
     }
 
+    fun setTopBarPillFade(enabled: Boolean) {
+        repo.topBarPillFade = enabled
+        _uiState.update { it.copy(topBarPillFade = enabled) }
+    }
+
     fun setEnableNavigationBadge(enabled: Boolean) {
         repo.enableNavigationBadge = enabled
         _uiState.update { it.copy(enableNavigationBadge = enabled) }
@@ -3758,6 +3783,7 @@ homePillScale = repo.homePillScale,
             enableFloatingBottomBar = enableFloatingBottomBar,
             enableFloatingBottomBarBlur = enableFloatingBottomBarBlur,
             topBarStyle = topBarStyle,
+            topBarPillFade = topBarPillFade,
             enableNavigationBadge = enableNavigationBadge,
             pageScale = pageScale,
             customHomeTitle = customHomeTitle,

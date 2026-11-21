@@ -321,6 +321,8 @@
     <string name="settings_top_bar_style_standard">Standard</string>
     <string name="settings_top_bar_style_floating">Floating</string>
     <string name="settings_top_bar_style_floating_glass">Floating glass</string>
+    <string name="settings_top_bar_pill_fade">Fade control backgrounds on scroll</string>
+    <string name="settings_top_bar_pill_fade_summary">Control backgrounds reach full opacity while the page scrolls; turn off to always show them.</string>
     <string name="settings_section_interaction">Interaction &amp; gestures</string>
     <string name="settings_section_interaction_summary">Predictive back, swipe dismiss, pager gestures and page scale</string>
     <string name="settings_section_details">Interface details</string>

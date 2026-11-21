@@ -293,6 +293,8 @@
     <string name="settings_top_bar_style_standard">标准</string>
     <string name="settings_top_bar_style_floating">悬浮</string>
     <string name="settings_top_bar_style_floating_glass">悬浮玻璃</string>
+    <string name="settings_top_bar_pill_fade">按钮背景随滚动淡入</string>
+    <string name="settings_top_bar_pill_fade_summary">开启后按钮背景在页面滚动时才会完全显现；关闭后始终显示。</string>
     <string name="settings_section_interaction">交互与手势</string>
     <string name="settings_section_interaction_summary">预测性返回、滑动关闭、翻页手势和页面缩放</string>
     <string name="settings_section_details">界面细节</string>

@@ -148,6 +148,7 @@ import com.sukisu.nova.ui.theme.LocalEnableFloatingBottomBarBlur
 import com.sukisu.nova.ui.theme.LocalEnableNavigationBadge
 import com.sukisu.nova.ui.theme.LocalEnableProgressiveBlur
 import com.sukisu.nova.ui.theme.LocalModuleDescriptionMaxLines
+import com.sukisu.nova.ui.theme.LocalTopBarPillFade
 import com.sukisu.nova.ui.theme.LocalTopBarStyle
 import com.sukisu.nova.ui.theme.TopBarStyle
 import com.sukisu.nova.ui.util.BackgroundNavTransition
@@ -306,6 +307,7 @@ class MainActivity : ComponentActivity() {
                 LocalEnableFloatingBottomBar provides uiState.enableFloatingBottomBar,
                 LocalEnableFloatingBottomBarBlur provides uiState.enableFloatingBottomBarBlur,
                 LocalTopBarStyle provides TopBarStyle.fromValue(uiState.topBarStyle),
+                LocalTopBarPillFade provides uiState.topBarPillFade,
                 LocalEnableNavigationBadge provides uiState.enableNavigationBadge,
                 LocalModuleDescriptionMaxLines provides uiState.moduleDescriptionMaxLines,
                 LocalBackgroundImagePath provides effectiveBackgroundPath,

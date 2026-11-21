@@ -75,6 +75,7 @@ object AiThemeController : AiThemeService {
             put("floating_bottom_bar", repo.enableFloatingBottomBar)
             put("floating_bottom_bar_blur", repo.enableFloatingBottomBarBlur)
             put("top_bar_style", repo.topBarStyle)
+            put("top_bar_pill_fade", repo.topBarPillFade)
             put("navigation_badge", repo.enableNavigationBadge)
             put("page_scale", repo.pageScale)
             put("enable_predictive_back", repo.enablePredictiveBack)
@@ -206,6 +207,7 @@ object AiThemeController : AiThemeService {
                 }
                 repo.topBarStyle = style
             }
+            "top_bar_pill_fade" -> repo.topBarPillFade = text.toBooleanValue()
             "navigation_badge" -> repo.enableNavigationBadge = text.toBooleanValue()
             "page_scale" -> {
                 val scale = text.toFloatOrNull()

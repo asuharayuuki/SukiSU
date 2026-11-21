@@ -54,6 +54,7 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.automirrored.rounded.MenuOpen
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.BlurOn
+import androidx.compose.material.icons.rounded.Opacity
 import androidx.compose.material.icons.rounded.CallToAction
 import androidx.compose.material.icons.rounded.Colorize
 import androidx.compose.material.icons.rounded.Crop
@@ -1623,6 +1624,21 @@ fun ColorPaletteScreenMiuix(
                                     },
                                     selectedIndex = state.topBarStyle.coerceIn(0, 2),
                                     onSelectedIndexChange = actions.onSetTopBarStyle,
+                                )
+                                HorizontalDivider()
+                                SwitchPreference(
+                                    title = stringResource(id = R.string.settings_top_bar_pill_fade),
+                                    summary = stringResource(id = R.string.settings_top_bar_pill_fade_summary),
+                                    startAction = {
+                                        Icon(
+                                            Icons.Rounded.Opacity,
+                                            modifier = Modifier.padding(end = 6.dp),
+                                            contentDescription = stringResource(id = R.string.settings_top_bar_pill_fade),
+                                            tint = colorScheme.onBackground,
+                                        )
+                                    },
+                                    checked = state.topBarPillFade,
+                                    onCheckedChange = actions.onSetTopBarPillFade,
                                 )
                             }
                         }
