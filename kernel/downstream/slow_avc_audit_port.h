@@ -27,6 +27,8 @@
 #ifndef __KSU_H_SLOW_AVC_AUDIT_PORT
 #define __KSU_H_SLOW_AVC_AUDIT_PORT
 
+#include "../feature/avc_spoof.h"
+
 /*
  * avc_spoof owns its own SIDs and enable switch. When the avc_has_perm*
  * callers are redirected here, its kprobe on slow_avc_audit() is bypassed,
