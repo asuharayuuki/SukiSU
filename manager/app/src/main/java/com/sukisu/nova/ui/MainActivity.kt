@@ -270,18 +270,13 @@ class MainActivity : ComponentActivity() {
                 mutableStateOf(false)
             }
             val hasDynamicWallpaper = uiState.dynamicWallpaperPath.isNotEmpty() && !dynamicWallpaperFailed
-            // Capture the wallpaper layer for the bar blur: the static image and/or the dynamic
-            // WebView. Without it the progressive band has no texture to sample over a dynamic
-            // wallpaper, and the bars lose their tint instead of frosting the video. The glass
-            // top-bar style does not force this: its frost follows the blur switches.
-            //
-            // Do not hand a live WebView to the progressive-blur runtime shader: some vendor
-            // WebViews (MIUI/HyperOS) crash while their surface is sampled, before the first
-            // frame, which restarts the app in a loop because the setting is persisted. Keep the
-            // plain bar blur sampling the video; the progressive path falls back to its tint.
-            val progressiveDynamicUnsafe = hasDynamicWallpaper && progressiveBlurActive
-            val captureAppBackground = !progressiveDynamicUnsafe &&
-                (uiState.customBackgroundUri.isNotEmpty() || hasDynamicWallpaper) &&
+            // Capture only a still custom background for the bar blur. A live WebView must never
+            // enter a Compose backdrop layer: some MIUI/HyperOS WebViews crash while their surface
+            // is recorded (before the first frame), and because the background is persisted the app
+            // restarts in a loop. With a dynamic wallpaper the bars fall back to their tint/scrim
+            // instead of frosting the video; the static-image case keeps the frosted bars.
+            val captureAppBackground = uiState.customBackgroundUri.isNotEmpty() &&
+                !hasDynamicWallpaper &&
                 ((uiMode == UiMode.Miuix && uiState.enableBlur) || progressiveBlurActive)
             val effectiveBackgroundPath = uiState.customBackgroundUri.ifEmpty {
                 uiState.dynamicWallpaperPath
