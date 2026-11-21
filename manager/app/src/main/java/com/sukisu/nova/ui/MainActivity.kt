@@ -383,12 +383,15 @@ class MainActivity : ComponentActivity() {
                     }
                     val flashRoute = navigator.current() as? Route.Flash
                     var flashBackEnabled by remember(flashRoute) { mutableStateOf(false) }
+                    val actionRoute = navigator.current() as? Route.ExecuteModuleAction
+                    var actionBackEnabled by remember(actionRoute) { mutableStateOf(false) }
                     val scriptRunRoute = navigator.current() as? Route.ScriptRun
                     var scriptRunBackEnabled by remember(scriptRunRoute) { mutableStateOf(true) }
                     val kernelFlashRoute = navigator.current() as? Route.KernelFlash
                     var kernelFlashBackEnabled by remember(kernelFlashRoute) { mutableStateOf(false) }
                     // Read here, not inside the NavDisplay builder: NavDisplay only rebuilds its entries
                     // (and their swipeDismiss) when the builder lambda changes, so it must capture the value.
+                    val actionSwipeDismiss = if (actionBackEnabled) swipeDismiss else NavSwipeDirection.None
                     val scriptRunSwipeDismiss = if (scriptRunBackEnabled) swipeDismiss else NavSwipeDirection.None
                     val kernelFlashSwipeDismiss = if (kernelFlashBackEnabled) swipeDismiss else NavSwipeDirection.None
                     val mainScreenEntry = @Composable {
@@ -484,10 +487,13 @@ class MainActivity : ComponentActivity() {
                                     },
                                 )
                             }
-                            entry<Route.ExecuteModuleAction>(swipeDismiss = swipeDismiss) { key ->
+                            entry<Route.ExecuteModuleAction>(swipeDismiss = actionSwipeDismiss) { key ->
                                 ExecuteModuleActionScreen(
                                     key.moduleId,
-                                    key.fromShortcut
+                                    key.fromShortcut,
+                                    onBackEnabledChange = { enabled ->
+                                        if (navigator.current() == key) actionBackEnabled = enabled
+                                    },
                                 )
                             }
                             entry<Route.ScriptRun>(swipeDismiss = scriptRunSwipeDismiss) { key ->

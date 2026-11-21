@@ -282,6 +282,7 @@ class ThemeStoreViewModel(application: Application) : AndroidViewModel(applicati
     private var editPrefillJob: kotlinx.coroutines.Job? = null
     private var followsJob: kotlinx.coroutines.Job? = null
     private var loadJob: kotlinx.coroutines.Job? = null
+    private var commentsJob: kotlinx.coroutines.Job? = null
     private var preferencesPushJob: kotlinx.coroutines.Job? = null
     private var preferencesPullJob: kotlinx.coroutines.Job? = null
     private var localPreferenceRevision = 0L
@@ -1512,19 +1513,25 @@ class ThemeStoreViewModel(application: Application) : AndroidViewModel(applicati
     
     fun loadComments(item: ThemeStoreItem, force: Boolean = false) {
         val current = _uiState.value
-        if (current.commentsLoading && !force) return
-        if (!force && current.commentsThemeKey == item.key && current.commentsError == null) return
+        val sameTheme = current.commentsThemeKey == item.key
+        if (current.commentsLoading && sameTheme && !force) return
+        if (!force && sameTheme && current.commentsError == null) return
+        commentsJob?.cancel()
         account.reload()
         val signedIn = account.sessionFor(item.source.baseUrl) != null
         _uiState.update {
+            val keepExisting = it.commentsThemeKey == item.key
             it.copy(
                 commentsThemeKey = item.key,
+                comments = if (keepExisting) it.comments else emptyList(),
                 commentsLoading = true,
                 commentsError = null,
-                commentReplyTarget = if (signedIn) it.commentReplyTarget else null,
+                commentsIsThemeAuthor = if (keepExisting) it.commentsIsThemeAuthor else false,
+                commentsIsAdmin = if (keepExisting) it.commentsIsAdmin else false,
+                commentReplyTarget = if (keepExisting && signedIn) it.commentReplyTarget else null,
             )
         }
-        viewModelScope.launch {
+        commentsJob = viewModelScope.launch {
             account.comments(item.source.baseUrl, item.entry.id).fold(
                 onSuccess = { response ->
                     _uiState.update { state ->
