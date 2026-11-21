@@ -1157,16 +1157,29 @@ class ThemeStoreRepository(
             executeThemeUpload(uploadClient, request) { response ->
                 if (response.code == 401) throw ThemeStoreUnauthorizedException()
                 val raw = response.uploadJson()
+                // A front proxy can replace the submission response with its own web page;
+                // say so instead of leaking a decoder error or a bare status code.
+                val webPage = raw.trimStart().startsWith("<")
                 val parsed = runCatching {
                     json.decodeFromString(ThemeStoreSubmitResponse.serializer(), raw)
                 }.getOrNull()
                 if (!response.isSuccessful) {
                     throw IOException(
                         parsed?.error?.takeIf { it.isNotBlank() }
-                            ?: "HTTP ${response.code} while submitting theme",
+                            ?: if (webPage) {
+                                "主题商店前置代理返回了网页（HTTP ${response.code}），请稍后重试"
+                            } else {
+                                "HTTP ${response.code} while submitting theme"
+                            },
                     )
                 }
-                parsed ?: throw IOException("Invalid theme submission response")
+                parsed ?: throw IOException(
+                    if (webPage) {
+                        "主题商店返回了网页而不是 JSON（HTTP ${response.code}），请稍后重试"
+                    } else {
+                        "Invalid theme submission response"
+                    },
+                )
             }
         }.onFailure { if (it is CancellationException) throw it }
     }

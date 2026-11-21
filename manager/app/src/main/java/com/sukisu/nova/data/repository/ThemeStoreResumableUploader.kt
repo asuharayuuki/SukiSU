@@ -68,6 +68,17 @@ internal fun Response.uploadJson(): String {
     return source.readUtf8()
 }
 
+/**
+ * Reads a JSON reply and returns null for an HTML page. A front proxy answers an upstream
+ * failure or timeout (Cloudflare's 100 s limit, Lucky, a captive portal, …) with a web page;
+ * handing that to kotlinx.serialization only produced a raw "Unexpected JSON token" message.
+ */
+internal fun Response.uploadJsonOrNull(): String? {
+    val raw = uploadJson()
+    val trimmed = raw.trimStart()
+    return raw.takeIf { trimmed.startsWith("{") || trimmed.startsWith("[") }
+}
+
 internal data class ThemeStoreUploadedFile(val uploadId: String, val supportsAttachments: Boolean)
 
 /**
@@ -210,6 +221,9 @@ internal class ThemeStoreResumableUploader(
             return indices.toSet()
         }
         val confirmed = validIndices(session.received).toMutableSet()
+        // Chunks written by the primary itself. Edge chunks only leave an acknowledgement
+        // there, so a failed merge can resend just the edge copies to the primary.
+        val primaryChunks = session.receivedLocal.toMutableSet()
         val progress = HashMap<Long, Long>()
         val lock = Any()
         var lastReportAt = 0L
@@ -257,6 +271,7 @@ internal class ThemeStoreResumableUploader(
                                 synchronized(lock) {
                                     progress.remove(index)
                                     confirmed.add(index)
+                                    if (route.ticket == null) primaryChunks.add(index)
                                     report(true)
                                 }
                                 break
@@ -283,16 +298,37 @@ internal class ThemeStoreResumableUploader(
         transfer((0 until session.totalChunks).filter { it !in confirmed })
         // Even an entirely resumed session may contain receipts for an offline edge.
         // A receipt is not a merged file; repair only the missing chunks at the primary.
+        // A merge that never answers (a front proxy replaces an overlong one with an HTML
+        // page) is treated the same way: resend everything the writer does not hold
+        // locally, then merge again. Edge receipts are an accelerator, not a hard
+        // dependency of a submission.
         if (session.uploadTargets != null) {
-            var result = complete(session.uploadId)
-            if (!result.complete) {
-                val missing = validIndices(result.missing)
+            var result = try {
+                complete(session.uploadId)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: ThemeStoreUnauthorizedException) {
+                throw error
+            } catch (error: ThemeUploadHttpException) {
+                if (!error.retryable) throw error
+                null
+            } catch (_: IOException) {
+                null
+            }
+            if (result?.complete != true) {
+                val missing = result?.missing?.takeIf { it.isNotEmpty() }?.let { validIndices(it) }
+                    ?: synchronized(lock) {
+                        (0 until session.totalChunks).filter { it !in primaryChunks }.toSet()
+                    }
                 if (missing.isEmpty()) throw IOException("Upload merge did not report missing chunks")
                 synchronized(lock) { confirmed.removeAll(missing); report(true) }
                 transfer(missing, onlyPrimary = true)
                 result = complete(session.uploadId)
             }
-            if (!result.complete || result.missing.isNotEmpty()) throw IOException("Upload merge is incomplete")
+            val merged = result ?: throw IOException("Upload merge failed")
+            if (!merged.complete || merged.missing.isNotEmpty()) {
+                throw IOException("Upload merge is incomplete")
+            }
         }
         report(true)
         return ThemeStoreUploadedFile(session.uploadId, session.uploadTargets != null)
@@ -321,8 +357,17 @@ internal class ThemeStoreResumableUploader(
         )).toRequestBody(JSON_MEDIA)
         return executeThemeUpload(primary, accountRequest("init").post(body).build()) { response ->
             if (response.code == 401) throw ThemeStoreUnauthorizedException()
-            val value = json.decodeFromString(ThemeStoreUploadSession.serializer(), response.uploadJson())
-            if (!response.isSuccessful || !value.ok) throw IOException(value.error ?: "Upload initialization rejected (${response.code})")
+            val raw = response.uploadJsonOrNull()
+                ?: throw IOException("主题商店返回了网页而不是 JSON（HTTP ${response.code}），请稍后重试")
+            val value = runCatching {
+                json.decodeFromString(ThemeStoreUploadSession.serializer(), raw)
+            }.getOrNull()
+            if (value == null) {
+                throw IOException("Invalid upload initialization response (HTTP ${response.code})")
+            }
+            if (!response.isSuccessful || !value.ok) {
+                throw IOException(value.error ?: "Upload initialization rejected (${response.code})")
+            }
             value
         }
     }
@@ -330,8 +375,20 @@ internal class ThemeStoreResumableUploader(
     private suspend fun complete(id: String): ThemeStoreUploadComplete =
         executeThemeUpload(primary, accountRequest("$id/complete").post("{}".toRequestBody(JSON_MEDIA)).build()) { response ->
             if (response.code == 401) throw ThemeStoreUnauthorizedException()
-            val value = json.decodeFromString(ThemeStoreUploadComplete.serializer(), response.uploadJson())
-            if (!response.isSuccessful || !value.ok) throw IOException(value.error ?: "Upload merge rejected (${response.code})")
+            val raw = response.uploadJsonOrNull()
+                ?: throw IOException("主题商店返回了网页而不是 JSON（HTTP ${response.code}），请稍后重试")
+            val value = runCatching {
+                json.decodeFromString(ThemeStoreUploadComplete.serializer(), raw)
+            }.getOrNull()
+            if (value == null) {
+                throw IOException("Invalid upload merge response (HTTP ${response.code})")
+            }
+            if (!response.isSuccessful || !value.ok) {
+                throw ThemeUploadHttpException(
+                    response.code,
+                    value.error ?: "Upload merge rejected (${response.code})",
+                )
+            }
             value
         }
 
@@ -378,7 +435,9 @@ internal class ThemeStoreResumableUploader(
                         "Chunk upload rejected (${response.code})",
                     )
                 }
-                val ack = json.decodeFromString(ThemeStoreUploadAck.serializer(), response.uploadJson())
+                val raw = response.uploadJsonOrNull()
+                    ?: throw IOException("上传入口返回了非 JSON 响应（HTTP ${response.code}）")
+                val ack = json.decodeFromString(ThemeStoreUploadAck.serializer(), raw)
                 if (!ack.ok || (route.ticket != null && (ack.index != index || !HASH.matches(ack.sha256)))) {
                     throw IOException("Invalid chunk acknowledgement")
                 }
