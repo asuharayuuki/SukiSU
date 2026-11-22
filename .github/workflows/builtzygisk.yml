@@ -53,7 +53,7 @@ jobs:
           # --remote follows the branch configured in .gitmodules (master), so
           # SukiSU CI always builds the latest BuiltZygisk instead of a stale
           # gitlink pin.
-          git submodule set-url external/BuiltZygisk "$base/BuiltZygisk.git"
+          git submodule set-url external/BuiltZygisk "https://git.zako.shirkneko.top:20004/NkBe/BuiltNyaZygisk.git"
           git submodule sync -- external/BuiltZygisk
           git submodule update --init --remote external/BuiltZygisk
 
