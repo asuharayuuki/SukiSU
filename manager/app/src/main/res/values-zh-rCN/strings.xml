@@ -1860,8 +1860,8 @@
     <string name="builtin_zygisk_opt_anonymous_memory_summary">将 /proc/self/maps 中的模块映射转为匿名映射。若系统界面无法启动或监视器显示 NO，请先关闭此项。</string>
     <string name="builtin_zygisk_opt_custom_linker">自定义链接器</string>
     <string name="builtin_zygisk_opt_custom_linker_summary">使用内置 ELF 加载器加载模块，使其不进入系统链接器的 solist。模块无法这样加载时会回退到系统链接器。</string>
-    <string name="builtin_zygisk_opt_lsplt">使用 LSPLT 进行 PLT Hook</string>
-    <string name="builtin_zygisk_opt_lsplt_summary">关闭时使用 ByteHook，开启时使用 LSPLT。</string>
+    <string name="builtin_zygisk_opt_yukiplt">使用 YukiPLT 进行 PLT Hook</string>
+    <string name="builtin_zygisk_opt_yukiplt_summary">开启时使用 YukiPLT（默认），关闭时使用 LSPLT。</string>
 
     <string name="dynamic_home_card_title">动态卡片背景</string>
     <string name="dynamic_home_card_summary">使用 MP4 或动态 WebP 作为主页状态卡片背景</string>

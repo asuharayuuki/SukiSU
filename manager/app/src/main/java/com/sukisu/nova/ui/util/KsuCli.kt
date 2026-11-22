@@ -1489,7 +1489,7 @@ data class BuiltinZygiskConfig(
     val anonymousMemory: Boolean = false,
     val customLinker: Boolean = false,
     // "bytehook" or "lsplt"
-    val pltEngine: String = "bytehook",
+    val pltEngine: String = "yukiplt",
 )
 
 fun getBuiltinZygiskConfig(): BuiltinZygiskConfig {
@@ -1500,7 +1500,7 @@ fun getBuiltinZygiskConfig(): BuiltinZygiskConfig {
         BuiltinZygiskConfig(
             anonymousMemory = json.optString("anonymous_memory") == "1",
             customLinker = json.optString("custom_linker") == "1",
-            pltEngine = json.optString("plt_engine", "bytehook").ifEmpty { "bytehook" },
+            pltEngine = json.optString("plt_engine", "yukiplt").ifEmpty { "yukiplt" },
         )
     }.getOrDefault(BuiltinZygiskConfig())
 }

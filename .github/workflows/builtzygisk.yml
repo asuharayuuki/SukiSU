@@ -62,7 +62,7 @@ jobs:
           git submodule set-url loader/src/external/lsplt "$base/LSPlt.git"
           git submodule set-url loader/src/external/dobby "$base/Dobby.git"
           git submodule set-url loader/src/external/rv64hook "$base/riscv64-inline-hook.git"
-          git submodule set-url loader/src/external/bhook "$base/bhook.git"
+          git submodule set-url loader/src/external/yukiplt "https://git.zako.shirkneko.top:20004/NkBe/YukiPLT.git"
           git submodule sync
           git submodule update --init
 

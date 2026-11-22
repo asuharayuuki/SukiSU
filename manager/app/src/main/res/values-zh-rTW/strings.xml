@@ -1852,8 +1852,8 @@
     <string name="builtin_zygisk_opt_anonymous_memory_summary">將 /proc/self/maps 中的模組映射轉為匿名映射。若系統介面無法啟動或監視器顯示 NO，請先關閉此項。</string>
     <string name="builtin_zygisk_opt_custom_linker">自訂連結器</string>
     <string name="builtin_zygisk_opt_custom_linker_summary">使用內建 ELF 載入器載入模組，使其不進入系統連結器的 solist。模組無法這樣載入時會退回系統連結器。</string>
-    <string name="builtin_zygisk_opt_lsplt">使用 LSPLT 進行 PLT Hook</string>
-    <string name="builtin_zygisk_opt_lsplt_summary">關閉時使用 ByteHook，開啟時使用 LSPLT。</string>
+    <string name="builtin_zygisk_opt_yukiplt">使用 YukiPLT 進行 PLT Hook</string>
+    <string name="builtin_zygisk_opt_yukiplt_summary">開啟時使用 YukiPLT（預設），關閉時使用 LSPLT。</string>
 
     <string name="dynamic_home_card_title">動態卡片背景</string>
     <string name="dynamic_home_card_summary">使用 MP4 或動態 WebP 作為主頁狀態卡片背景</string>

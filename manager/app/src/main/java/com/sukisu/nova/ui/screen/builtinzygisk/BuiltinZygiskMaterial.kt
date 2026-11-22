@@ -335,10 +335,10 @@ internal fun BuiltinZygiskMaterial(
                             },
                             {
                                 SegmentedSwitchItem(
-                                    title = stringResource(R.string.builtin_zygisk_opt_lsplt),
-                                    summary = stringResource(R.string.builtin_zygisk_opt_lsplt_summary),
-                                    checked = uiState.config.pltEngine == "lsplt",
-                                    onCheckedChange = { onSetOption("plt_engine", if (it) "lsplt" else "bytehook") }
+                                    title = stringResource(R.string.builtin_zygisk_opt_yukiplt),
+                                    summary = stringResource(R.string.builtin_zygisk_opt_yukiplt_summary),
+                                    checked = uiState.config.pltEngine != "lsplt",
+                                    onCheckedChange = { onSetOption("plt_engine", if (it) "yukiplt" else "lsplt") }
                                 )
                             }
                         )
