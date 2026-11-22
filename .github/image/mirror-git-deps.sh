@@ -26,6 +26,7 @@ adb_client|https://github.com/KernelSU2/adb_client|d97a966435bebaa55017834869dec
 ksu_props|https://github.com/KernelSU2/ksu_props|ddb6ee7294467f7f25bad2118e9e24eee104144b
 rustix|https://github.com/KernelSU2/rustix.git|4a53fbc7cb7a07cabe87125cc21dbc27db316259
 kernlog.rs|https://github.com/kstep/kernlog.rs|68caa7bf1e27baea35b00ebba786cafae0bca90f
+rustix-jm|https://github.com/JingMatrix/rustix|
 '
 
 printf '%s\n' "$specs" | while IFS='|' read -r name url revs; do

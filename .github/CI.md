@@ -25,9 +25,10 @@ Everything under `.github/` is executed by the CI itself. The two exceptions are
 ```
 
 Tools that are never run by CI live outside, in `scripts/`: `scripts/dev/` for the
-developer machine, `scripts/host/` for the runner host. Only
-`scripts/host/seed-ci-tools.sh` relates to CI, and it runs on the host, not in a
-job.
+developer machine, `scripts/host/` for the runner host. Two of them relate to CI
+and both run on the host, not in a job: `seed-ci-tools.sh` (installs
+`/ci/tools/bin/ci-checkout`) and `seed-cargo-cache.sh` (prewarms the cargo
+registry, see "Things this network cannot reach").
 
 ### Checkout lives on the host, not in the repository
 
@@ -134,7 +135,7 @@ one, so a running job keeps the image it started with.
 only proxies a fixed domain list), and `services.gradle.org` redirects to
 `github.com`. Nothing in the pipeline may depend on them:
 
-- **Rust git dependencies** — seven crates come from git on `github.com`.
+- **Rust git dependencies** — eight crates come from git on `github.com`.
   `.github/image/mirror-git-deps.sh` mirrors them into `/srv/forgejo-ci/git-mirrors`
   with the revisions `Cargo.lock` pins tagged, the image bakes them in, and
   `git url.<mirror>.insteadOf` plus `cargo net.git-fetch-with-cli` redirect the
@@ -147,6 +148,16 @@ only proxies a fixed domain list), and `services.gradle.org` redirects to
   release assets of the mirrored KernelPatch repo, and the image also carries a
   copy at `/opt/kpm-tools` that the job seeds into `app/build/generated/kpmTools`
   after `gradle clean`.
+- **crates.io** — `static.crates.io` accepts the TCP connection and then drops
+  the TLS handshake (`unexpected eof while reading`), so a cargo download is a
+  coin flip and one `hashbrown` download took a builtzygisk run down.
+  `scripts/host/seed-cargo-cache.sh` fills the persistent `/ci/tools/cargo`
+  registry cache from a container that has access (it clones BuiltZygisk's
+  `zygiskd`, runs `cargo fetch` for the job's nightly, and the crates and the
+  mirrored git dependencies land in the cache the job already mounts), and
+  `builtzygisk.yml` then runs with `CARGO_NET_OFFLINE=1`. Re-run the script when
+  `zygiskd` gains a dependency or floats to a version the cache does not have;
+  nothing in the image needs rebuilding.
 
 ## Artifact transport
 

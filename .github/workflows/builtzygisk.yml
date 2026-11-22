@@ -6,7 +6,8 @@ name: Build BuiltZygisk
 # submodules on github.com. All five repositories are mirrored on this instance
 # and the URLs are rewritten below, because a job container cannot reach
 # github.com. Everything the build needs (SDK 37, NDK 27.2, CMake 4.1.2,
-# cargo-ndk) is baked into the sukisu-ci image.
+# cargo-ndk) is baked into the sukisu-ci image; zygiskd's crates are prewarmed
+# into the host's /ci/tools/cargo by scripts/host/seed-cargo-cache.sh.
 on:
   workflow_dispatch:
   workflow_call:
@@ -24,7 +25,13 @@ jobs:
     runs-on: ${{ inputs.os }}
     env:
       GRADLE_USER_HOME: /ci/tools/gradle
+      # The persistent cargo home, prewarmed with zygiskd's crate set by
+      # scripts/host/seed-cargo-cache.sh. The build itself is offline (below),
+      # so it never touches static.crates.io, whose TLS connections this tunnel
+      # cuts mid-handshake. A BuiltZygisk dependency change means re-running
+      # that host script, not rebuilding the image.
       CARGO_HOME: /ci/tools/cargo
+      CARGO_NET_OFFLINE: "true"
       RUSTUP_HOME: /usr/local/rustup
       # zygiskd is built with -Z, so cargo must run on nightly; this toolchain
       # also carries rust-src in the image.
@@ -73,6 +80,12 @@ jobs:
           cargo ndk --version || true
           test -d "${ANDROID_NDK_HOME}"
           test -d /opt/android-sdk/cmake/4.1.2
+          # The job is offline: without the prewarmed cache the build cannot
+          # resolve zygiskd's dependencies, and saying so here beats a cargo
+          # error halfway through. Run scripts/host/seed-cargo-cache.sh (see
+          # CI.md).
+          test -n "$(ls "${CARGO_HOME}/registry/cache")"
+          test -d "${CARGO_HOME}/git/db"
 
       - name: Build BuiltZygisk
         working-directory: external/BuiltZygisk

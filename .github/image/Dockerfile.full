@@ -9,6 +9,14 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:${PATH}
 
+# This tunnel drops TLS connections (static.crates.io cuts the handshake, which
+# is why the old image set CARGO_NET_RETRY only in Dockerfile). builtzygisk
+# runs offline against the prewarmed cache, but ksud/ksuinit still resolve from
+# crates.io on a cache miss, so give cargo a real chance before it gives up.
+ENV CARGO_NET_RETRY=10 \
+    CARGO_HTTP_TIMEOUT=60 \
+    CARGO_HTTP_MULTIPLEXING=false
+
 RUN set -eux; \
     cargo --version; \
     rustup toolchain list; \

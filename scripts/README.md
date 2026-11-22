@@ -28,6 +28,7 @@ powershell -ExecutionPolicy Bypass -File scripts/dev/setup-rust-build.ps1 aarch6
 | --- | --- | --- |
 | `seed-ci-tools.sh` | 把 `.github/scripts/ci/ci-checkout.sh` 安装到 `/ci/tools/bin/ci-checkout`。漏跑时该 host 上**所有 job 在第一步 Checkout 就失败**（exit 127，2 秒收场） | runner host（Docker named volume 或 bind mount 都支持） |
 | `artifact-server.sh` | 用 Docker 把 `/ci/runs` 只读发布到 LAN:18080，供另一台 runner 跨主机取产物 | runner host，**不在 job 内** |
+| `seed-cargo-cache.sh` | 预热 `/ci/tools/cargo`：克隆 BuiltZygisk 的 `zygiskd` 并 `cargo fetch`。BuiltZygisk 依赖变化后要重跑，否则 builtzygisk job 的离线构建会缺 crate | runner host，**不在 job 内**（容器需要能访问 crates.io） |
 | `prepare-ddk-x64.sh` | 为 8 个 KMI 生成 x86_64 的 DDK kdir，供 DDK 镜像与 LKM 构建使用 | `/opt/ddk` 所在的构建机 |
 
 ```bash
@@ -36,9 +37,12 @@ CI_TOOLS_VOLUME=forgejo-ci bash scripts/host/seed-ci-tools.sh
 
 # runner 的 job 用 host 目录挂载时，直接跑即可
 bash scripts/host/seed-ci-tools.sh
+
+# 预热 builtzygisk 的 crate 缓存；/ci 由 Windows 目录挂载时给 CI_ROOT
+CI_ROOT='X:/other/forgejo-ci' bash scripts/host/seed-cargo-cache.sh
 ```
 
-两个脚本都是幂等的，可重复执行。`prepare-ddk-x64.sh` 依赖 `/opt/ddk/src`、
+三个种子脚本都是幂等的，可重复执行。`prepare-ddk-x64.sh` 依赖 `/opt/ddk/src`、
 `/opt/ddk/clang`、`/opt/ddk/rust` 已就位。
 
 产物传输的完整链路（`/ci` → EasyTier 对端 → CNB → Forgejo Artifacts）见
