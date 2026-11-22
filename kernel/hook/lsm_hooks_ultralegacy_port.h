@@ -26,7 +26,7 @@
 #ifndef __KSU_H_LSM_HOOKS_ULTRALEGACY_PORT
 #define __KSU_H_LSM_HOOKS_ULTRALEGACY_PORT
 
-static int hook_file_permission_mount(struct file *file, int mask)
+static int ksu_file_permission_mount(struct file *file, int mask)
 {
 	ksu_mount_hide_file_permission(file, mask);
 
@@ -45,7 +45,7 @@ static void ksu_restore_file_permission_mount(void)
 		return;
 
 	ret = patch_ro_slot((uintptr_t)&ops->file_permission,
-			    (uintptr_t)hook_file_permission_mount);
+			    (uintptr_t)ksu_file_permission_mount);
 	pr_info("LSM: %s: mount_hide layer kept on file_permission ret: %d\n",
 		__func__, ret);
 }

@@ -50,7 +50,7 @@ __overloaded static int ksu_slow_avc_audit_handler_0(SLOW_AVC_AUDIT_TYPE_0)
 	ksu_slow_avc_audit_inline(&tsid);
 
 	assume(!!&slow_avc_audit);
-	return ((typeof(ksu_slow_avc_audit_handler_0) *)slow_avc_audit)(ssid, tsid, tclass, requested, audited, denied, a, flags);
+	return ((typeof(ksu_slow_avc_audit_handler_0) *)(void *)slow_avc_audit)(ssid, tsid, tclass, requested, audited, denied, a, flags);
 }
 
 #endif /* CONFIG_AUDIT && CONFIG_ARM64 && CONFIG_KALLSYMS */

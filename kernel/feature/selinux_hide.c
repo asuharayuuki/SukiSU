@@ -421,6 +421,7 @@ page_ok:
 	ksu_init_hook_sel_handle_status_ops_open();
 	ksu_init_hook_transaction_ops_write();
 #endif
+
 	// selinux_setprocattr hook init is on lsm.
 	
 	// downstream/slow_avc_audit_defs.h

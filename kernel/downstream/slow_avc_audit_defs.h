@@ -66,7 +66,7 @@ __overloaded static int ksu_slow_avc_audit_handler_1(SLOW_AVC_AUDIT_TYPE_1)
 	ksu_slow_avc_audit_inline(&tsid);
 
 	assume(!!&slow_avc_audit);
-	return ((typeof(ksu_slow_avc_audit_handler_1) *)slow_avc_audit)(ssid, tsid, tclass, requested, audited, denied, result, a);
+	return ((typeof(ksu_slow_avc_audit_handler_1) *)(void *)slow_avc_audit)(ssid, tsid, tclass, requested, audited, denied, result, a);
 }
 
 #define SLOW_AVC_AUDIT_TYPE_2	struct selinux_state *state, u32 ssid, u32 tsid, u16 tclass, u32 requested, u32 audited, u32 denied, int result, struct common_audit_data *a
@@ -75,7 +75,7 @@ __overloaded static int ksu_slow_avc_audit_handler_2(SLOW_AVC_AUDIT_TYPE_2)
 	ksu_slow_avc_audit_inline(&tsid);
 
 	assume(!!&slow_avc_audit);
-	return ((typeof(ksu_slow_avc_audit_handler_2) *)slow_avc_audit)(state, ssid, tsid, tclass, requested, audited, denied, result, a);
+	return ((typeof(ksu_slow_avc_audit_handler_2) *)(void *)slow_avc_audit)(state, ssid, tsid, tclass, requested, audited, denied, result, a);
 }
 
 #define SLOW_AVC_AUDIT_TYPE_3	struct selinux_state *state, u32 ssid, u32 tsid, u16 tclass, u32 requested, u32 audited, u32 denied, int result, struct common_audit_data *a, unsigned int flags
@@ -84,7 +84,7 @@ __overloaded static int ksu_slow_avc_audit_handler_3(SLOW_AVC_AUDIT_TYPE_3)
 	ksu_slow_avc_audit_inline(&tsid);
 
 	assume(!!&slow_avc_audit);
-	return ((typeof(ksu_slow_avc_audit_handler_3) *)slow_avc_audit)(state, ssid, tsid, tclass, requested, audited, denied, result, a, flags);
+	return ((typeof(ksu_slow_avc_audit_handler_3) *)(void *)slow_avc_audit)(state, ssid, tsid, tclass, requested, audited, denied, result, a, flags);
 }
 
 #define SLOW_AVC_AUDIT_TYPE_4	u32 ssid, u32 tsid, u16 tclass, u32 requested, u32 audited, u32 denied, int result, struct common_audit_data *a, unsigned int flags
@@ -93,7 +93,7 @@ __overloaded static int ksu_slow_avc_audit_handler_4(SLOW_AVC_AUDIT_TYPE_4)
 	ksu_slow_avc_audit_inline(&tsid);
 
 	assume(!!&slow_avc_audit);
-	return ((typeof(ksu_slow_avc_audit_handler_4) *)slow_avc_audit)(ssid, tsid, tclass, requested, audited, denied, result, a, flags);
+	return ((typeof(ksu_slow_avc_audit_handler_4) *)(void *)slow_avc_audit)(ssid, tsid, tclass, requested, audited, denied, result, a, flags);
 }
 
 #define ksu_slow_avc_audit_overloaded _Generic(				\
