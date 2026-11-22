@@ -214,6 +214,7 @@ fun ThemeStoreScreen(
     var sortMode by rememberSaveable { mutableStateOf(ThemeStoreSort.DEFAULT) }
     var selectedItemKey by rememberSaveable { mutableStateOf<String?>(null) }
     val themeGridState = rememberLazyGridState()
+    val authorGridState = rememberLazyGridState()
     var selectedAuthor by rememberSaveable { mutableStateOf<String?>(null) }
     var authorReturnItemKey by rememberSaveable { mutableStateOf<String?>(null) }
     var detailReturnAuthor by rememberSaveable { mutableStateOf<String?>(null) }
@@ -382,6 +383,12 @@ fun ThemeStoreScreen(
         selectedItemKey = null
         detailReturnAuthor = null
         if (!returnToAuthor) selectedAuthor = null
+    }
+
+    // The author page keeps its own grid state so closing a theme detail lands back on the card
+    // that opened it. Only a different author starts from the top.
+    LaunchedEffect(selectedAuthor) {
+        if (selectedAuthor != null) authorGridState.scrollToItem(0)
     }
 
     LaunchedEffect(showUpload, selectedUploadBaseUrl) {
@@ -626,6 +633,7 @@ fun ThemeStoreScreen(
             items = authorItems,
             state = state,
             gridLayout = state.gridLayout,
+            listState = authorGridState,
             onToggleLayout = { viewModel.setGridLayout(!state.gridLayout) },
             landscapePreviewKeys = landscapePreviewKeys,
             onBack = ::closeAuthorPage,
@@ -1279,8 +1287,17 @@ private fun ThemeStoreMaterial(
     // Render the catalogue in pages so a fast scroll does not fan out hundreds of
     // preview-image requests at once. Coil still loads only composed cards, but
     // bounding the list keeps its prefetch window small.
+    // A detail/author page replaces the grid, and this window is rebuilt when the grid comes
+    // back while listState keeps the previous scroll position. Seed the window past that
+    // position, otherwise the restored index is outside pagedItems and LazyVerticalGrid clamps
+    // it back to the first page.
     var loadedThemeCount by remember(visibleItems) {
-        mutableStateOf(STORE_PAGE_SIZE)
+        mutableStateOf(
+            themeStorePageWindow(
+                firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                totalItems = visibleItems.size,
+            ),
+        )
     }
     val pagedItems = remember(visibleItems, loadedThemeCount) {
         visibleItems.take(loadedThemeCount)

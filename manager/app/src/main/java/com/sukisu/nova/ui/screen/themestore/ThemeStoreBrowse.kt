@@ -11,6 +11,26 @@ internal const val ADAPTIVE_TAG = "adaptive"
 /// Store cards rendered per page; preview images load lazily as pages are opened.
 internal const val STORE_PAGE_SIZE = 10
 
+/**
+ * Number of catalogue cards that must be windowed so a restored grid position stays valid.
+ *
+ * The store grid leaves the composition while a detail or author page is shown, so the page
+ * window is rebuilt on the way back while the grid state still reports the previous scroll
+ * position. Windowing fewer cards than that position makes LazyVerticalGrid clamp the restore to
+ * the end of the window, which is why only the first page used to land back on the right spot.
+ */
+internal fun themeStorePageWindow(
+    firstVisibleItemIndex: Int,
+    totalItems: Int,
+    pageSize: Int = STORE_PAGE_SIZE,
+): Int {
+    if (pageSize <= 0) return totalItems.coerceAtLeast(0)
+    if (totalItems <= 0) return pageSize
+    val index = firstVisibleItemIndex.coerceAtLeast(0)
+    val pages = index / pageSize + 1
+    return (pages * pageSize).coerceIn(pageSize, totalItems.coerceAtLeast(pageSize))
+}
+
 /// First package format that can carry the shared dynamic wallpaper/card media.
 internal const val DYNAMIC_FORMAT_VERSION = 6
 
