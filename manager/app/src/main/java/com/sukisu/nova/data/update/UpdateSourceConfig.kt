@@ -111,7 +111,7 @@ object UpdateSourceDefaults {
     const val DEFAULT_ID = "cnb"
     const val DEFAULT_BASE_URL = "https://cnb.cool"
     const val DEFAULT_OWNER = "shirkneko"
-    const val DEFAULT_REPO = "sukisu-result"
+    const val DEFAULT_REPO = "sukisu-release"
 
     const val CODEBERG_ID = "codeberg"
     const val CODEBERG_BASE_URL = "https://codeberg.org"
