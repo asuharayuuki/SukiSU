@@ -12,12 +12,11 @@
 #   CNB_WEB     default https://cnb.cool (public download host)
 #
 # The helpers that touch a release take an optional trailing REPO so the
-# artifact transport can keep its per-run releases in a separate repository
-# (see ci_artifact_cnb_repo in common.sh) while publishing still targets
-# CNB_REPO. Omitting REPO keeps the release repository.
+# artifact transport can keep its archives in a separate repository (see
+# ci_artifact_cnb_repo in common.sh) while publishing still targets CNB_REPO.
+# Omitting REPO keeps the release repository.
 #
 # API surface used:
-#   GET    /-/releases                          -> api.Release[] (paged)
 #   GET    /-/releases/tags/<tag>
 #   POST   /-/releases                          {tag_name,target_commitish,name,body,draft,prerelease,make_latest}
 #   PATCH  /-/releases/<id>                     {name,body,prerelease,make_latest}
@@ -192,48 +191,32 @@ cnb_tag_delete() {
 	esac
 }
 
-# cnb_release_assets TAG [REPO]
-#   One asset name per line. Empty when the release has no assets.
-cnb_release_assets() {
+# cnb_release_asset_list TAG [REPO]
+#   One "ID<TAB>NAME" per asset of the release. Empty when the release has no
+#   assets, and also when it does not exist: callers that need the difference
+#   resolve the release id first.
+cnb_release_asset_list() {
 	local tag="$1" repo json
 	repo="${2:-$(cnb_repo)}"
 	json="$(mktemp)"
 	cnb_curl -o "$json" "$(cnb_api_base "$repo")/-/releases/tags/${tag}" >/dev/null 2>&1 || true
-	jq -r '.assets[]?.name // empty' "$json" 2>/dev/null || true
+	jq -r '.assets[]? | [(.id | tostring), .name] | @tsv' "$json" 2>/dev/null || true
 	rm -f "$json"
 }
 
-# cnb_release_list [REPO]
-#   One "TAG<TAB>ID<TAB>PUBLISHED_AT" per release, newest first as CNB returns
-#   them. Paginates with page_size=100 (the API's ceiling); a short page ends the
-#   walk. Returns 1 when the API answered with something that is not a JSON
-#   array, so a token without repo-code:r looks like a failure instead of an
-#   empty repository.
-cnb_release_list() {
-	local repo="${1:-$(cnb_repo)}" page=1 size=100 out count
-	while [ "$page" -le 10 ]; do
-		out="$(mktemp)"
-		cnb_curl -o "$out" \
-			"$(cnb_api_base "$repo")/-/releases?page=${page}&page_size=${size}" 2>/dev/null || true
-		if ! jq -e 'type == "array"' "$out" >/dev/null 2>&1; then
-			rm -f "$out"
-			echo "cnb: cannot list releases of ${repo} (token needs repo-code:r)" >&2
-			return 1
-		fi
-		jq -r '.[]? | [.tag_name, (.id | tostring), (.published_at // "")] | @tsv' "$out"
-		count="$(jq 'length' "$out")"
-		rm -f "$out"
-		[ "$count" -ge "$size" ] || break
-		page=$((page + 1))
-	done
+# cnb_release_assets TAG [REPO]
+#   One asset name per line. Empty when the release has no assets.
+cnb_release_assets() {
+	cnb_release_asset_list "$@" | cut -f2
 }
 
 
-# cnb_asset_delete RELEASE_ID ASSET_ID
+# cnb_asset_delete RELEASE_ID ASSET_ID [REPO]
 cnb_asset_delete() {
-	local release_id="$1" asset_id="$2" code
+	local release_id="$1" asset_id="$2" repo code
+	repo="${3:-$(cnb_repo)}"
 	code="$(cnb_curl -o /dev/null -w '%{http_code}' \
-		-X DELETE "$(cnb_api_base)/-/releases/${release_id}/assets/${asset_id}" || true)"
+		-X DELETE "$(cnb_api_base "$repo")/-/releases/${release_id}/assets/${asset_id}" || true)"
 	case "$code" in
 	200 | 204 | 404) return 0 ;;
 	*)

@@ -124,7 +124,7 @@ jobs:
     env:
       # 产物经 CNB 中转；没有 token 时只留在 /ci 并告警
       CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
-      # 制品仓只放 `ci-<run_id>`，与 release 仓分开，且只保留最近 5 次 run
+      # 制品仓只放 `<run_id>__<name>.tar.gz`，与 release 仓分开，且只保留最近 5 次 run
       CNB_ARTIFACT_REPO: ${{ vars.CNB_ARTIFACT_REPO || 'shirkneko/sukisu-artifacts' }}
 
     steps:
@@ -143,19 +143,20 @@ jobs:
           # 或者：ci_download_all_artifacts artifacts
 ```
 
-查找顺序：`/ci` 卷 → EasyTier peer（18080）→ CNB（制品仓里 `ci-<run_id>` release
-上的 `<name>.tar.gz`）→ Forgejo artifact API。CNB 是跨机器、跨 run 都能用的那一层，
-大文件也走它，不要改回让每个 job 自己往 Forgejo 传。
+查找顺序：`/ci` 卷 → EasyTier peer（18080）→ CNB（制品仓里 `ci-artifacts` release
+上的 `<run_id>__<name>.tar.gz`）→ Forgejo artifact API。CNB 是跨机器、跨 run 都能用的
+那一层，大文件也走它，不要改回让每个 job 自己往 Forgejo 传。
 
-制品仓（`CNB_ARTIFACT_REPO`）与 release 仓（`CNB_REPO`）分开：每次 run 一个
-release 本身没错，但同一个仓库既放 CI 产物又放正式 release，数量会无限增长，旧仓库
-就是这样被判成 release 滥用的。`ci_artifact_cnb_prune` 在每个 run 首次归档成功后
-删掉第 6 个及更早的 `ci-<run_id>`（release 和 tag 一起删），上限由
-`CI_ARTIFACT_KEEP_RUNS` 控制（默认 5）。所以只保证最近 5 次 run 能跨机器/跨 run
-取回，更早的只剩产出它的那台机器的 `/ci`。
+制品仓（`CNB_ARTIFACT_REPO`）与 release 仓（`CNB_REPO`）分开，而且制品仓里
+**只有一个 release**：run id 写进 asset 名，不再每个 run 新建/删除 release。
+旧仓库就是因为每次构建都新建一个 `ci-<run_id>` release、又从来不清，被判成
+release 滥用。`ci_artifact_cnb_prune` 只删 **asset**：每个 run 首次归档成功后，
+把第 6 个及更早的 run 的 asset 删掉，上限由 `CI_ARTIFACT_KEEP_RUNS` 控制（默认 5），
+正在清的那个 run 永远不删。所以只保证最近 5 次 run 能跨机器/跨 run 取回，更早的
+只剩产出它的那台机器的 `/ci`。
 
 产物就留在 CNB 上，不再回传到 Forgejo：job summary 里的下载链接直接指
-`https://cnb.cool/<artifact-repo>/-/releases/download/ci-<run_id>/<name>.tar.gz`，
+`https://cnb.cool/<artifact-repo>/-/releases/download/ci-artifacts/<run_id>__<name>.tar.gz`，
 `manager-ci`（main）/ `manager-dev`（dev）的 release body 也只是一张指向
 `CNB_REPO` 的链接表（每次构建删除重建，旧 APK 不会残留，`published_at` 也随之前进），
 分支各自发自己的 tag，互不覆盖。
@@ -289,7 +290,7 @@ repos:
 | 步骤名显示 `./.ci-actions/...` | 给每个 `uses:` 步骤写 `name` |
 | 上传 401 | 用对权限的令牌；内置 `GITHUB_TOKEN` 没有 package 权限 |
 | 跨 runner 找不到产物 | 用 `ci_artifact_put`（经 CNB 中转），不要只写 `/ci` |
-| 产物下载链接 404 | 链接指向 CNB 的 `ci-<run_id>`；先确认这个 job 的 `ci_artifact_put` 真的成功了。若是很久以前的 run，它的 CNB 副本已被 `ci_artifact_cnb_prune` 按保留策略删掉，只能在产出它的机器 `/ci` 上找 |
+| 产物下载链接 404 | 链接指向 `ci-artifacts` release 里的 `<run_id>__<name>.tar.gz`；先确认这个 job 的 `ci_artifact_put` 真的成功了。若是很久以前的 run，它的 asset 已被 `ci_artifact_cnb_prune` 按保留策略删掉，只能在产出它的机器 `/ci` 上找 |
 | 日志暴露令牌 | 令牌相关命令前后 `set +x` / `set -x` |
 | 任务被分到哪台机器 | 标签相同的 runner 先到先得，没有负载均衡配置 |
 

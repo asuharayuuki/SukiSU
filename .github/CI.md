@@ -170,22 +170,22 @@ so artifacts move through these places, tried in this order by
 2. **EasyTier peer** — each runner serves `/ci/runs` on port 18080
    (`scripts/host/artifact-server.sh`), so the other host can fetch the same tree.
    Flat files only: the manifest fetch rejects any entry containing `/`.
-3. **CNB** — every artifact is also archived as `<name>.tar.gz` on the CNB
-   release `ci-<run_id>` of `CNB_ARTIFACT_REPO` (default
+3. **CNB** — every artifact is also archived as `<run_id>__<name>.tar.gz` on the
+   single release `ci-artifacts` of `CNB_ARTIFACT_REPO` (default
    `shirkneko/sukisu-artifacts`). This is the path that works across hosts *and*
    across runs, and it carries the directory layout the peer cannot. Downloads
-   are anonymous. Those releases are created as prereleases so the manager's
-   stable channel never picks one up.
+   are anonymous, and the release is created as a prerelease so the manager's
+   stable channel never picks it up.
 
-   The per-run releases live in their own repository, separate from the release
-   repository (`CNB_REPO`, default `shirkneko/sukisu-release`), and only the newest
-   `CI_ARTIFACT_KEEP_RUNS` (default 5) are kept: `ci_artifact_cnb_prune` deletes
-   the older release *and* its git tag once per run per runner. The run doing the
-   pruning is never a candidate, so a slow run cannot delete its own release
-   halfway through. Without that cap the repository collects a release per run
-   forever, which is what got the old `sukisu-result` repository removed for
-   release abuse. Older runs therefore cannot be fetched from CNB any more; they
-   stay on `/ci` only where they were produced.
+   The archives live in their own repository, separate from the release
+   repository (`CNB_REPO`, default `shirkneko/sukisu-release`), and releases in
+   it are never created or deleted per run — a release per run, created and
+   deleted on every build, is what got the old `sukisu-result` repository removed
+   for release abuse. The run id lives in the asset name instead, and
+   `ci_artifact_cnb_prune` deletes the assets of runs older than the newest
+   `CI_ARTIFACT_KEEP_RUNS` (default 5), once per run per runner, never touching
+   the run that is pruning. Older runs therefore cannot be fetched from CNB any
+   more; they stay on `/ci` only where they were produced.
 4. **Forgejo Artifacts API** — last resort (zip download); needs a token and is
    the slow endpoint.
 
@@ -255,11 +255,11 @@ CNB keeps the original `published_at` when a release is updated, and its release
 pages only embed the newest ten, so a patched-in-place release would eventually
 be pushed off the page the updater reads.
 
-CNB needs `CNB_TOKEN` (release read/write; the per-run pruning also needs
-`repo-code:r` to list releases). Two optional variables pick the repositories:
+CNB needs `CNB_TOKEN` (release read/write; the pruning also needs `repo-code:r`
+to read the archive release). Two optional variables pick the repositories:
 `CNB_REPO` (default `shirkneko/sukisu-release`) for stable releases and the rolling
 channels, and `CNB_ARTIFACT_REPO` (default `shirkneko/sukisu-artifacts`) for the
-`ci-<run_id>` archives. Publishing back to Forgejo uses `RELEASE_API_TOKEN` when
+`<run_id>__*` archives. Publishing back to Forgejo uses `RELEASE_API_TOKEN` when
 set, and the built-in `GITHUB_TOKEN` otherwise.
 
 Telegram delivery is a CNB pipeline in the release repository, not a workflow
