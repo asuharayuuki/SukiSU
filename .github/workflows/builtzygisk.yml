@@ -53,15 +53,31 @@ jobs:
         run: /ci/tools/bin/ci-checkout
 
       - name: Fetch the submodules from the mirrors
+        env:
+          # The mirror repositories require the same auth as the main one.
+          TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           set -eux
           base="https://git.zako.shirkneko.top:20004/shirkneko"
+          site="https://git.zako.shirkneko.top:20004"
+
+          # The mirror repositories require the same auth as the main one, and
+          # git would just fail with "could not read Username". The GIT_CONFIG_*
+          # variables apply the header to every git command below, including
+          # the clones the submodule machinery spawns.
+          if [ -n "${TOKEN:-}" ]; then
+            set +x
+            export GIT_CONFIG_COUNT=1
+            export GIT_CONFIG_KEY_0="http.${site}/.extraHeader"
+            export GIT_CONFIG_VALUE_0="Authorization: token ${TOKEN}"
+            set -x
+          fi
 
           # The umbrella submodule first, then its own four dependencies.
           # --remote follows the branch configured in .gitmodules (master), so
           # SukiSU CI always builds the latest BuiltZygisk instead of a stale
           # gitlink pin.
-          git submodule set-url external/BuiltZygisk "https://git.zako.shirkneko.top:20004/NkBe/BuiltNyaZygisk.git"
+          git submodule set-url external/BuiltZygisk "${site}/NkBe/BuiltNyaZygisk.git"
           git submodule sync -- external/BuiltZygisk
           git submodule update --init --remote external/BuiltZygisk
 
@@ -70,7 +86,7 @@ jobs:
           git submodule set-url loader/src/external/lsplt "$base/LSPlt.git"
           git submodule set-url loader/src/external/dobby "$base/Dobby.git"
           git submodule set-url loader/src/external/rv64hook "$base/riscv64-inline-hook.git"
-          git submodule set-url loader/src/external/yukiplt "https://git.zako.shirkneko.top:20004/NkBe/YukiPLT.git"
+          git submodule set-url loader/src/external/yukiplt "${site}/NkBe/YukiPLT.git"
           git submodule sync
           git submodule update --init
 

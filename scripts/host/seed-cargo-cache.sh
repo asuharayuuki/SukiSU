@@ -24,9 +24,11 @@
 #
 # A BuiltZygisk checkout can be passed as the second argument (or
 # CI_BUILTZYGISK_SRC); otherwise the container clones it from the Forgejo
-# mirror, which it can reach.
+# mirror, which it can reach. The mirror requires auth, so pass a repo access
+# token as CI_GIT_TOKEN when cloning (ignored with a local checkout).
 #
 #   bash scripts/host/seed-cargo-cache.sh /srv/forgejo-ci ~/src/BuiltZygisk
+#   CI_GIT_TOKEN=<token> bash scripts/host/seed-cargo-cache.sh
 set -euo pipefail
 
 # Git Bash rewrites /ci in a -v argument to C:/Program Files/Git/ci; the same
@@ -45,6 +47,7 @@ fi
 bz_src="${2:-${CI_BUILTZYGISK_SRC:-}}"
 image="${CI_TOOLS_IMAGE:-forgejo-ci/full:1}"
 url="${CI_BUILTZYGISK_URL:-https://git.zako.shirkneko.top:20004/NkBe/BuiltNyaZygisk.git}"
+token="${CI_GIT_TOKEN:-}"
 # Keep in sync with RUSTUP_TOOLCHAIN in .github/workflows/builtzygisk.yml: the
 # cache is resolved by the same cargo the job uses.
 toolchain="${CI_RUST_TOOLCHAIN:-nightly-2026-09-23}"
@@ -81,6 +84,7 @@ fi
 docker run --rm "${mounts[@]}" \
 	-e "CI_RUST_TOOLCHAIN=${toolchain}" \
 	-e "CI_BUILTZYGISK_URL=${url}" \
+	-e "CI_GIT_TOKEN=${token}" \
 	-e CARGO_HOME=/ci/tools/cargo \
 	-e CARGO_NET_GIT_FETCH_WITH_CLI=true \
 	-e CARGO_NET_RETRY=10 \
@@ -93,6 +97,14 @@ docker run --rm "${mounts[@]}" \
 	if [ -f /src/zygiskd/Cargo.toml ]; then
 		cp -a /src/. "$work/"
 	else
+		# The mirror requires auth, and git would fail with
+		# "could not read Username"; the header goes through GIT_CONFIG_* so it
+		# applies to the clone without landing in any config file.
+		if [ -n "${CI_GIT_TOKEN:-}" ]; then
+			export GIT_CONFIG_COUNT=1
+			export GIT_CONFIG_KEY_0="http.${CI_BUILTZYGISK_URL}/.extraHeader"
+			export GIT_CONFIG_VALUE_0="Authorization: token ${CI_GIT_TOKEN}"
+		fi
 		git clone -q --depth 1 "$CI_BUILTZYGISK_URL" "$work"
 	fi
 	cd "$work/zygiskd"
