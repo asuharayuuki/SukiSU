@@ -38,6 +38,7 @@
  *	- integrate with arm64_tiny_trampoline. (261119)
  *	- wire up sys_faccessat->user_path_at_empty branch for < 4.17. (261119)
  *	- wire up sys_faccessat->user_path_at branch for < 4.2. (261121)
+ *	- overload do_execve_common for < 3.19. (261122)
  *
  * NOTES:
  *	- not everyone is expected to understand how this works.
@@ -160,7 +161,6 @@ KEEP_SYMBOL_NO_TAIL int ksu_vfs_fstatat(int dfd, const char __user *filename, st
 }
 
 // execve
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
 KEEP_SYMBOL_NO_TAIL int ksu_do_execveat_common(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags)
 {
 	ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);
@@ -176,22 +176,19 @@ KEEP_SYMBOL_NO_TAIL int ksu_do_execve_file(int fd, struct filename *restrict fil
 #endif // < 5.9
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 19, 0)
-KEEP_SYMBOL_NO_TAIL int ksu_do_execve_common(struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp)
+struct filename;
+__overloaded KEEP_SYMBOL_NO_TAIL int ksu_do_execve_common_struct(struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp)
 {
 	ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);
-	return ksu_do_execve_common(filename, argv, envp);
+	return ksu_do_execve_common_struct(filename, argv, envp);
 }
-#endif // < 3.19
 
-#else /* < 3.14 */
-
-KEEP_SYMBOL_NO_TAIL int ksu_do_execve_common(const char *filename, struct user_arg_ptr argv, struct user_arg_ptr envp)
+__overloaded KEEP_SYMBOL_NO_TAIL int ksu_do_execve_common_char(const char *filename, struct user_arg_ptr argv, struct user_arg_ptr envp)
 {
 	ksu_legacy_execve_sucompat(&filename, &argv, &envp);
-	return ksu_do_execve_common(filename, argv, envp);
+	return ksu_do_execve_common_char(filename, argv, envp);
 }
-#endif
-
+#endif // < 3.19
 #pragma GCC diagnostic pop
 #undef KEEP_SYMBOL_NO_TAIL
 
@@ -215,7 +212,7 @@ KEEP_SYMBOL_NO_TAIL int ksu_do_execve_common(const char *filename, struct user_a
 #define ksu_self_patch_hook(hook_fn, tgt) ({									\
 	uintptr_t hook_p = kernel_function_lookup(hook_fn);							\
 	int ret = arm64_branch_patch_trampolined(hook_p, ksu_get_ksym_size32(hook_p), hook_p, tgt, false);	\
-	pr_info("patch_hook: %s ret: %d \n", #hook_fn, ret);							\
+	pr_info("self_patch_hook: %s ret: %d \n", #hook_fn, ret);						\
 	ret;													\
 })
 
@@ -392,7 +389,6 @@ static int bl_hook_newfstatat(void)
 	return bl_hook_vfs_fstatat();
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
 static inline int bl_hook_do_execveat_common(void)
 {
 	int ret, ret2;
@@ -492,12 +488,24 @@ static inline int bl_hook_do_execve_file(void)
 
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 19, 0)
+#define DO_EXECVE_TYPE_char	const char *filename, const char __user *const __user *__argv, const char __user *const __user *__envp
+#define DO_EXECVE_TYPE_struct	struct filename *filename, const char __user *const __user *__argv, const char __user *const __user *__envp
+#define do_execve_common_type _Generic(		\
+(do_execve),					\
+	int (*)(DO_EXECVE_TYPE_char):	0,	\
+	int (*)(DO_EXECVE_TYPE_struct): 1	\
+)
+
 static inline int bl_hook_do_execve_common(void)
 {
 	int ret;
 	uintptr_t symbol_addr;
 	uintptr_t target_callsite;
-	const uintptr_t target_hook = (uintptr_t)&ksu_do_execve_common;
+	uintptr_t target_hook = 0x0;
+	if (!do_execve_common_type)
+		target_hook = (uintptr_t)&ksu_do_execve_common_char;
+	else
+		target_hook = (uintptr_t)&ksu_do_execve_common_struct;
 
 	// we do NOT bother with trampolines on this one
 	target_callsite = syscall_lookup("sys_execve");
@@ -506,7 +514,10 @@ static inline int bl_hook_do_execve_common(void)
 		return -ENOENT;
 
 	// patch our hook handler first
-	ret = ksu_self_patch_hook(ksu_do_execve_common, symbol_addr);
+	if (!do_execve_common_type)
+		ret = ksu_self_patch_hook(ksu_do_execve_common_char, symbol_addr);
+	else
+		ret = ksu_self_patch_hook(ksu_do_execve_common_struct, symbol_addr);
 	if (ret)
 		return ret;
 
@@ -524,6 +535,8 @@ static inline int bl_hook_do_execve_common(void)
 #endif
 	return ret;
 }
+#undef DO_EXECVE_TYPE_char
+#undef DO_EXECVE_TYPE_struct
 #endif
 
 static int bl_hook_execve(void)
@@ -540,52 +553,6 @@ static int bl_hook_execve(void)
 #endif
 	return res;
 }
-
-#else /* < 3.14 */
-static int bl_hook_execve(void)
-{
-	int ret;
-	uintptr_t target_callsite;
-	uintptr_t symbol_addr;
-
-	// we do NOT bother with trampolines on this one
-	target_callsite = syscall_lookup("sys_execve");
-	symbol_addr = kallsyms_lookup_retry("do_execve_common");
-	if (!symbol_addr)
-		return -ENOENT;
-
-	// patch our hook handler first
-	ret = ksu_self_patch_hook(ksu_do_execve_common, symbol_addr);
-	if (ret)
-		return ret;
-
-	ret = patch_arm64_branches(target_callsite, symbol_addr, (uintptr_t)&ksu_do_execve_common);
-	pr_info("hook_site: sys_execve->do_execve_common ret: %d \n", ret);
-	if (!ret)
-		goto unhook_sct_native;
-
-	return ret;
-
-unhook_sct_native:
-	restore_syscall((void *)&aarch64_execve, __AARCH64_execve, (void *)hook_aarch64_execve, native_sct);
-
-#ifdef CONFIG_COMPAT
-	target_callsite = syscall_lookup("compat_sys_execve");
-
-	ret = patch_arm64_branches(target_callsite, symbol_addr, (uintptr_t)&ksu_do_execve_common);
-	pr_info("hook_site: compat_sys_execve->do_execve_common ret: %d \n", ret);
-	if (!ret)
-		goto unhook_sct_compat;
-
-	return ret;
-
-unhook_sct_compat:
-	restore_syscall((void *)&armeabi_execve, __ARMEABI_execve, (void *)hook_armeabi_execve, compat_sct);
-#endif
-
-	return ret;
-}
-#endif
 
 #undef patch_arm64_branches
 #undef ksu_self_patch_hook

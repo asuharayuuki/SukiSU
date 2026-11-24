@@ -168,6 +168,7 @@ CFLAGS_ksu.o += $(call cc-option, -Wno-incompatible-pointer-types-discards-quali
 CFLAGS_ksu.o += $(call cc-option, -Wno-discarded-qualifiers)
 CFLAGS_ksu.o += $(call cc-option, -Wno-deprecated-octal-literals)
 CFLAGS_ksu.o += $(call cc-option, -Wno-constant-logical-operand)
+CFLAGS_ksu.o += $(call cc-option, -Wno-alloca)
 
 # dont be too strict
 CFLAGS_REMOVE_ksu.o += -Werror
