@@ -355,6 +355,13 @@ class ThemeStoreRepository(
     private val cacheDir = File(context.cacheDir, "theme_store")
     private val downloadDir = File(cacheDir, "downloads")
 
+    /**
+     * Catalog bodies live in `filesDir`, not the cache, so a cold start after the system
+     * trims the cache can still paint the list immediately and hot-update it instead of
+     * paying for a full download again. Only packages and previews belong in the cache.
+     */
+    private val catalogDir = File(context.filesDir, "theme_store")
+
     // Theme data has its own verified file cache; bypass OkHttp's shared cache
     // so ETag/304 handling and download counting stay deterministic.
     private val downloadClient: OkHttpClient by lazy {
@@ -1345,6 +1352,10 @@ class ThemeStoreRepository(
         val response = catalogClient.newCall(requestBuilder.build()).execute()
         response.use { response ->
             if (response.code == 304) {
+                // Still in use: keep both cache files fresh so the age-based cleanup in
+                // cleanupStaleCache only removes stores nobody has opened for a month.
+                touch(catalogCacheFile(base))
+                touch(catalogCacheEtagFile(base))
                 return CatalogFetch(
                     catalog = cachedCatalog
                         ?: throw IOException("HTTP 304 without cached catalog"),
@@ -1432,16 +1443,16 @@ class ThemeStoreRepository(
 
     private fun readCachedStats(file: File): Map<String, Long>? = runCatching {
         if (!file.isFile) return@runCatching null
-        json.decodeFromString(ThemeStoreCatalogStats.serializer(), file.readText())
-            .downloads
-            .filterValues { it > 0 }
+        val stats = json.decodeFromString(ThemeStoreCatalogStats.serializer(), file.readText())
+        touch(file)
+        stats.downloads.filterValues { it > 0 }
     }.getOrNull()
 
     private fun catalogStatsFile(base: String): File =
-        File(cacheDir, "catalog-${base.hashCode().toUInt().toString(16)}.stats.json")
+        File(catalogDir, "catalog-${base.hashCode().toUInt().toString(16)}.stats.json")
 
     private fun catalogStatsEtagFile(base: String): File =
-        File(cacheDir, "catalog-${base.hashCode().toUInt().toString(16)}.stats.etag")
+        File(catalogDir, "catalog-${base.hashCode().toUInt().toString(16)}.stats.etag")
 
     private fun writeStatsEtag(base: String, etag: String?) {
         runCatching {
@@ -1455,10 +1466,10 @@ class ThemeStoreRepository(
     }
 
     private fun catalogCacheFile(base: String): File =
-        File(cacheDir, "catalog-${base.hashCode().toUInt().toString(16)}.json")
+        File(catalogDir, "catalog-${base.hashCode().toUInt().toString(16)}.json")
 
     private fun catalogCacheEtagFile(base: String): File =
-        File(cacheDir, "catalog-${base.hashCode().toUInt().toString(16)}.etag")
+        File(catalogDir, "catalog-${base.hashCode().toUInt().toString(16)}.etag")
 
     private fun writeCatalogEtag(base: String, etag: String?) {
         runCatching {
@@ -1480,15 +1491,33 @@ class ThemeStoreRepository(
             val raw = file.readText()
             val catalog = json.decodeFromString(ThemeStoreCatalog.serializer(), raw)
             if (catalog.schema > 1) return null
+            touch(file)
             ThemeCatalogLoad(catalog, fromCache = true)
         }.getOrNull()
     }
 
+    /** Marks [file] as used; the cleanup only ages out stores that are never opened. */
+    private fun touch(file: File, now: Long = System.currentTimeMillis()) {
+        runCatching { if (file.isFile) file.setLastModified(now) }
+    }
+
+    /**
+     * The last catalog stored for [baseUrl], without touching the network.
+     *
+     * A store that already has one is painted from disk and then hot-updated, so the
+     * manager only downloads the full list on the first visit of an installation (or
+     * after the app's data is cleared).
+     */
+    fun cachedCatalog(baseUrl: String): ThemeCatalogLoad? {
+        val base = normalizeBaseUrl(baseUrl) ?: return null
+        return readCachedCatalog(base)
+    }
+
     private fun writeCatalogCache(base: String, raw: String) {
         runCatching {
-            cacheDir.mkdirs()
+            catalogDir.mkdirs()
             val target = catalogCacheFile(base)
-            val temp = File(cacheDir, "${target.name}.tmp")
+            val temp = File(catalogDir, "${target.name}.tmp")
             temp.writeText(raw)
             if (!temp.renameTo(target)) {
                 temp.copyTo(target, overwrite = true)
@@ -1512,12 +1541,23 @@ class ThemeStoreRepository(
             if (file.isOlderThan(maxAge, now)) runCatching { file.delete() }
         }
         trimDownloadCache(now)
+        // Catalogs live in filesDir so a cold start can paint before any request; drop a
+        // store that has not been opened for a month instead of growing forever.
+        catalogDir.listFiles()?.forEach { file ->
+            if (file.isFile && file.name.startsWith("catalog-") &&
+                file.isOlderThan(30L * day, now)
+            ) {
+                runCatching { file.delete() }
+            }
+        }
         cacheDir.listFiles()?.forEach { file ->
             if (!file.isFile) return@forEach
             when {
+                // Left by builds that kept catalogs in the cache directory.
                 file.name.startsWith("catalog-") &&
-                    (file.name.endsWith(".json") || file.name.endsWith(".etag")) &&
-                    file.isOlderThan(30L * day, now) -> runCatching { file.delete() }
+                    (file.name.endsWith(".json") || file.name.endsWith(".etag")) -> runCatching {
+                    file.delete()
+                }
 
                 // The upload screen's "current preset" export lives directly in cacheDir and
                 // is not covered by the theme_import_* temporary-file rule above.
