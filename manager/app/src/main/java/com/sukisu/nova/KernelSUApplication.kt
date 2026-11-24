@@ -89,6 +89,9 @@ class KernelSUApplication : Application(), ViewModelStoreOwner, coil.ImageLoader
             val client = okhttpClient.newBuilder()
                 .addInterceptor(ThemeMediaInterceptor)
                 .protectThemeStoreRedirectCredentials()
+                // Screenshots are loaded through this loader; send them straight to the
+                // CNB prefix once a store redirect has revealed it.
+                .addInterceptor(com.sukisu.nova.data.repository.ThemeStoreMediaOffload)
                 .build()
             builder.okHttpClient(client)
         }
