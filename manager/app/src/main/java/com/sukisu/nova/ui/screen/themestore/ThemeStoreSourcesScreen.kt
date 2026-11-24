@@ -1,6 +1,7 @@
 package com.sukisu.nova.ui.screen.themestore
 
 import android.annotation.SuppressLint
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -17,19 +18,12 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.Icon as MaterialIcon
-import androidx.compose.material3.IconButton as MaterialIconButton
 import com.sukisu.nova.ui.component.material.TopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -38,12 +32,11 @@ import androidx.compose.material3.Text as MaterialText
 import androidx.compose.material3.TextButton as MaterialTextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -56,7 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sukisu.nova.R
-import com.sukisu.nova.data.model.ThemeStoreSourceConfig
+import com.sukisu.nova.data.repository.SettingsRepositoryImpl
 import com.sukisu.nova.data.repository.ThemeStoreDefaults
 import com.sukisu.nova.data.repository.ThemeStoreHealthError
 import com.sukisu.nova.data.repository.ThemeStoreHealthException
@@ -65,26 +58,9 @@ import com.sukisu.nova.ui.component.material.ExpressiveScaffold
 import com.sukisu.nova.ui.component.material.TopBarBackButton
 import com.sukisu.nova.ui.navigation3.LocalNavigator
 import com.sukisu.nova.ui.viewmodel.SettingsViewModel
-import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
-import java.util.UUID
 
 internal const val THEME_SOURCES_RESULT_KEY = "theme_store_sources_changed"
-
-private val ThemeStoreSourceListSaver = listSaver(
-    save = { sources ->
-        sources.map { source ->
-            Json.encodeToString(ThemeStoreSourceConfig.serializer(), source)
-        }
-    },
-    restore = { values ->
-        values.mapNotNull { value ->
-            runCatching {
-                Json.decodeFromString(ThemeStoreSourceConfig.serializer(), value)
-            }.getOrNull()
-        }
-    },
-)
 
 private sealed interface SourceTestState {
     data object Testing : SourceTestState
@@ -128,66 +104,33 @@ fun ThemeStoreSourcesScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember(context) { ThemeStoreRepository(context) }
+    // This screen is the only editor of the default source, so seed the draft from the
+    // persisted value instead of a UI snapshot that another screen may have outlived.
+    val settingsRepo = remember { SettingsRepositoryImpl() }
+    val storedBaseUrl = remember { settingsRepo.themeStoreBaseUrl }
     val builtInBases = remember {
         ThemeStoreDefaults.BASE_URLS
             .mapNotNull { ThemeStoreRepository.normalizeBaseUrl(it) }
             .toSet()
     }
 
-    var defaultBase by rememberSaveable(settings.themeStoreBaseUrl) {
-        mutableStateOf(ThemeStoreDefaults.resolveConfiguredBaseUrl(settings.themeStoreBaseUrl))
-    }
-    var keepAutoDefault by rememberSaveable(settings.themeStoreBaseUrl) {
-        mutableStateOf(ThemeStoreDefaults.usesAutoBaseUrl(settings.themeStoreBaseUrl))
+    var defaultBase by rememberSaveable(storedBaseUrl) {
+        mutableStateOf(ThemeStoreDefaults.resolveConfiguredBaseUrl(storedBaseUrl))
     }
     var defaultToken by rememberSaveable(settings.themeStoreToken) {
         mutableStateOf(settings.themeStoreToken)
     }
     var showBuiltInToken by rememberSaveable { mutableStateOf(false) }
-    var extraSources by rememberSaveable(
-        settings.themeStoreExtraSources,
-        stateSaver = ThemeStoreSourceListSaver,
-    ) {
-        mutableStateOf(settings.themeStoreExtraSources)
-    }
     var tests by remember { mutableStateOf<Map<String, SourceTestState>>(emptyMap()) }
     var healthChecks by remember { mutableStateOf<Map<String, SourceHealthState>>(emptyMap()) }
     var showSaveError by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        if (keepAutoDefault) {
-            defaultBase = ThemeStoreDefaults.resolveBestBaseUrl()
-        }
-    }
-
-    val normalizedDefault = ThemeStoreRepository.normalizeBaseUrl(
-        defaultBase.ifBlank { ThemeStoreDefaults.resolveConfiguredBaseUrl(settings.themeStoreBaseUrl) },
-    )
+    val normalizedDefault = ThemeStoreRepository.normalizeBaseUrl(defaultBase)
     val isBuiltIn = normalizedDefault != null && normalizedDefault in builtInBases
     val showDefaultToken = showBuiltInToken || !isBuiltIn || defaultToken.isNotBlank()
-    val effectiveDefaultBase = defaultBase.ifBlank {
-        ThemeStoreDefaults.resolveConfiguredBaseUrl(settings.themeStoreBaseUrl)
-    }
-    val defaultEndpoints = endpointsFor(effectiveDefaultBase)
+    val defaultEndpoints = endpointsFor(defaultBase)
     val effectiveDefaultToken = defaultToken.trim().ifBlank {
         ""
-    }
-
-    fun updateExtra(index: Int, source: ThemeStoreSourceConfig) {
-        extraSources = extraSources.toMutableList().also { it[index] = source }
-        tests = tests - extraTestKey(source)
-        healthChecks = healthChecks - extraTestKey(source)
-        showSaveError = false
-    }
-
-    fun removeExtra(index: Int) {
-        val source = extraSources.getOrNull(index)
-        extraSources = extraSources.toMutableList().also { it.removeAt(index) }
-        if (source != null) {
-            tests = tests - extraTestKey(source)
-            healthChecks = healthChecks - extraTestKey(source)
-        }
-        showSaveError = false
     }
 
     @SuppressLint("LocalContextGetResourceValueCall")
@@ -267,57 +210,44 @@ fun ThemeStoreSourcesScreen(
         }
     }
 
-    fun save() {
+    /** Writes the current draft to settings. Returns false when the draft is invalid. */
+    fun commitDraft(): Boolean {
         val normalized = ThemeStoreRepository.normalizeBaseUrl(
-            defaultBase.ifBlank { ThemeStoreDefaults.resolveConfiguredBaseUrl(settings.themeStoreBaseUrl) },
-        ) ?: run {
-            showSaveError = true
-            return
-        }
-        val extrasInvalid = extraSources.any { source ->
-            source.baseUrl.isNotBlank() &&
-                ThemeStoreRepository.normalizeBaseUrl(source.baseUrl) == null
-        }
-        if (extrasInvalid) {
-            showSaveError = true
-            return
-        }
-        val cleaned = extraSources
-            .filter { it.baseUrl.isNotBlank() }
-            .map { source ->
-                source.copy(
-                    name = source.name.trim(),
-                    baseUrl = ThemeStoreRepository.normalizeBaseUrl(source.baseUrl).orEmpty(),
-                    token = source.token.trim(),
-                    adminUrl = "",
-                )
-            }
-            .distinctBy { it.baseUrl }
-        settingsViewModel.setThemeStoreBaseUrl(if (keepAutoDefault) "" else normalized)
+            defaultBase,
+        ) ?: return false
+        settingsViewModel.setThemeStoreBaseUrl(normalized)
         settingsViewModel.setThemeStoreToken(defaultToken.trim())
         settingsViewModel.setThemeStoreAdminUrl("")
-        settingsViewModel.setThemeStoreExtraSources(cleaned)
+        return true
+    }
+
+    fun save() {
+        if (!commitDraft()) {
+            showSaveError = true
+            return
+        }
         navigator.setResult(THEME_SOURCES_RESULT_KEY, true)
     }
+
+    // Leaving with the back gesture or the back key used to drop every edit on the floor
+    // because only the save button persisted. Commit the draft on the way out instead;
+    // invalid input is discarded rather than pinning a broken URL.
+    DisposableEffect(Unit) {
+        onDispose { commitDraft() }
+    }
+
+    BackHandler(onBack = ::save)
 
     ThemeStoreSourcesMaterial(
         defaultBase = defaultBase,
         onDefaultBaseChange = {
             defaultBase = it
-            keepAutoDefault = false
             tests = tests - "default"
             healthChecks = healthChecks - "default"
             showSaveError = false
         },
-        defaultIsAuto = keepAutoDefault,
         onDefaultBaseSelect = { selected ->
-            if (selected == null) {
-                keepAutoDefault = true
-                defaultBase = ThemeStoreDefaults.resolveBestBaseUrl()
-            } else {
-                keepAutoDefault = false
-                defaultBase = selected
-            }
+            defaultBase = selected
             tests = tests - "default"
             healthChecks = healthChecks - "default"
             showSaveError = false
@@ -334,14 +264,11 @@ fun ThemeStoreSourcesScreen(
         isBuiltIn = isBuiltIn,
         defaultEndpoints = defaultEndpoints,
         defaultTest = tests["default"],
-        onTestDefault = { testSource("default", effectiveDefaultBase, effectiveDefaultToken) },
+        onTestDefault = { testSource("default", defaultBase, effectiveDefaultToken) },
         onResetAccess = { base ->
             scope.launch {
                 repository.resetAccess(base).onSuccess {
                     if (ThemeStoreRepository.normalizeBaseUrl(base) == normalizedDefault) defaultToken = ""
-                    extraSources = extraSources.map { source ->
-                        if (ThemeStoreRepository.normalizeBaseUrl(source.baseUrl) == ThemeStoreRepository.normalizeBaseUrl(base)) source.copy(token = "") else source
-                    }
                     tests = emptyMap()
                     healthChecks = emptyMap()
                 }.onFailure { error ->
@@ -350,20 +277,9 @@ fun ThemeStoreSourcesScreen(
             }
         },
         defaultHealth = healthChecks["default"],
-        extraSources = extraSources,
-        onUpdateExtra = ::updateExtra,
-        onRemoveExtra = ::removeExtra,
-        onAddExtra = {
-            extraSources = extraSources + ThemeStoreSourceConfig(id = UUID.randomUUID().toString())
-        },
-        tests = tests,
-        onTestExtra = { source ->
-            testSource(extraTestKey(source), source.baseUrl, source.token)
-        },
-        healthChecks = healthChecks,
         showSaveError = showSaveError,
         onSave = ::save,
-        onBack = { navigator.pop() },
+        onBack = ::save,
     )
 }
 
@@ -371,8 +287,7 @@ fun ThemeStoreSourcesScreen(
 private fun ThemeStoreSourcesMaterial(
     defaultBase: String,
     onDefaultBaseChange: (String) -> Unit,
-    defaultIsAuto: Boolean,
-    onDefaultBaseSelect: (String?) -> Unit,
+    onDefaultBaseSelect: (String) -> Unit,
     defaultToken: String,
     onDefaultTokenChange: (String) -> Unit,
     showDefaultToken: Boolean,
@@ -383,13 +298,6 @@ private fun ThemeStoreSourcesMaterial(
     onTestDefault: () -> Unit,
     onResetAccess: (String) -> Unit,
     defaultHealth: SourceHealthState?,
-    extraSources: List<ThemeStoreSourceConfig>,
-    onUpdateExtra: (Int, ThemeStoreSourceConfig) -> Unit,
-    onRemoveExtra: (Int) -> Unit,
-    onAddExtra: () -> Unit,
-    tests: Map<String, SourceTestState>,
-    onTestExtra: (ThemeStoreSourceConfig) -> Unit,
-    healthChecks: Map<String, SourceHealthState>,
     showSaveError: Boolean,
     onSave: () -> Unit,
     onBack: () -> Unit,
@@ -467,7 +375,7 @@ private fun ThemeStoreSourcesMaterial(
             item(key = "default") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     ThemeStoreDefaultMirrorPicker(
-                        selected = if (defaultIsAuto) null else defaultBase,
+                        selected = defaultBase,
                         onSelect = onDefaultBaseSelect,
                     )
                     SourceCardMaterial(
@@ -488,50 +396,6 @@ private fun ThemeStoreSourcesMaterial(
                     )
                 }
             }
-            if (extraSources.isNotEmpty()) {
-                item(key = "extra-title") {
-                    MaterialText(
-                        text = stringResource(R.string.theme_store_extra_sources),
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(start = 4.dp, top = 6.dp),
-                    )
-                }
-            }
-            itemsIndexed(extraSources, key = { index, source -> source.id.ifBlank { "extra-$index" } }) { index, source ->
-                SourceCardMaterial(
-                    title = source.name.ifBlank { stringResource(R.string.theme_store_source_unnamed) },
-                    subtitle = stringResource(R.string.theme_store_capability_read),
-                    baseUrl = source.baseUrl,
-                    onBaseUrlChange = { onUpdateExtra(index, source.copy(baseUrl = it)) },
-                    token = source.token,
-                    onTokenChange = { onUpdateExtra(index, source.copy(token = it)) },
-                    showToken = true,
-                    onShowToken = null,
-                    isBuiltIn = false,
-                    endpoints = endpointsFor(source.baseUrl),
-                    test = tests[extraTestKey(source)],
-                    onTest = { onTestExtra(source) },
-                    onResetAccess = { onResetAccess(source.baseUrl) },
-                    health = healthChecks[extraTestKey(source)],
-                    name = source.name,
-                    onNameChange = { onUpdateExtra(index, source.copy(name = it)) },
-                    onRemove = { onRemoveExtra(index) },
-                )
-            }
-            item(key = "add") {
-                MaterialTextButton(
-                    onClick = onAddExtra,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    MaterialIcon(
-                        imageVector = Icons.Rounded.Add,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.size(4.dp))
-                    MaterialText(stringResource(R.string.theme_store_add_source))
-                }
-            }
             item(key = "bottom-inset") {
                 Spacer(
                     Modifier.height(
@@ -544,27 +408,19 @@ private fun ThemeStoreSourcesMaterial(
 }
 
 /**
- * Manual mirror choice. "Automatic" uses the first reachable built-in mirror
- * and fails over down the chain; picking a built-in mirror pins it. All hosts
- * serve the same catalog.
+ * Explicitly selects the built-in default source. All hosts serve the same catalog.
  */
 @Composable
 private fun ThemeStoreDefaultMirrorPicker(
-    selected: String?,
-    onSelect: (String?) -> Unit,
+    selected: String,
+    onSelect: (String) -> Unit,
 ) {
-    val normalizedSelected = selected?.let { ThemeStoreRepository.normalizeBaseUrl(it) }
+    val normalizedSelected = ThemeStoreRepository.normalizeBaseUrl(selected)
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        FilterChip(
-            selected = normalizedSelected == null,
-            onClick = { onSelect(null) },
-            label = { MaterialText(stringResource(R.string.theme_store_default_auto)) },
-            shapes = FilterChipDefaults.shapes(),
-        )
         ThemeStoreDefaults.BASE_URLS.forEach { base ->
             val normalized = ThemeStoreRepository.normalizeBaseUrl(base) ?: return@forEach
             FilterChip(
@@ -580,6 +436,12 @@ private fun ThemeStoreDefaultMirrorPicker(
                 shapes = FilterChipDefaults.shapes(),
             )
         }
+        FilterChip(
+            selected = false,
+            onClick = { onSelect("") },
+            label = { MaterialText(stringResource(R.string.theme_store_add_default_source)) },
+            shapes = FilterChipDefaults.shapes(),
+        )
     }
 }
 
@@ -599,9 +461,6 @@ private fun SourceCardMaterial(
     onTest: () -> Unit,
     onResetAccess: () -> Unit,
     health: SourceHealthState?,
-    name: String? = null,
-    onNameChange: ((String) -> Unit)? = null,
-    onRemove: (() -> Unit)? = null,
 ) {
     var endpointsExpanded by rememberSaveable { mutableStateOf(false) }
     Card(
@@ -615,37 +474,12 @@ private fun SourceCardMaterial(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    MaterialText(text = title, style = MaterialTheme.typography.titleMedium)
-                    MaterialText(
-                        text = subtitle,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (onRemove != null) {
-                    MaterialIconButton(onClick = onRemove) {
-                        MaterialIcon(
-                            imageVector = Icons.Rounded.Delete,
-                            contentDescription = stringResource(R.string.theme_store_remove_source),
-                            tint = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                }
-            }
-            if (name != null && onNameChange != null) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = onNameChange,
-                    label = { MaterialText(stringResource(R.string.theme_store_source_name)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+            MaterialText(text = title, style = MaterialTheme.typography.titleMedium)
+            MaterialText(
+                text = subtitle,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             OutlinedTextField(
                 value = baseUrl,
                 onValueChange = onBaseUrlChange,
@@ -903,8 +737,6 @@ private fun SourceHealthTextMaterial(health: SourceHealthState?) {
         null -> Unit
     }
 }
-
-private fun extraTestKey(source: ThemeStoreSourceConfig): String = "extra:${source.id}"
 
 private fun endpointsFor(baseUrl: String): SourceEndpoints? {
     val base = ThemeStoreRepository.normalizeBaseUrl(baseUrl) ?: return null

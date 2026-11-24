@@ -434,7 +434,7 @@ fun ThemeStoreScreen(
 
     LaunchedEffect(Unit) {
         navigator.observeResult<Boolean>(THEME_SOURCES_RESULT_KEY).collect {
-            viewModel.load()
+            viewModel.reloadSources()
         }
     }
 

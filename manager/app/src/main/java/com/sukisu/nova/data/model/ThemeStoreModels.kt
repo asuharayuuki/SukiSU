@@ -53,16 +53,6 @@ data class ThemeStoreEntry(
 
 
 @Serializable
-data class ThemeStoreSourceConfig(
-    val id: String,
-    val name: String = "",
-    val baseUrl: String = "",
-    val token: String = "",
-    val adminUrl: String = "",
-)
-
-
-@Serializable
 data class ThemeStoreSubmitResponse(
     val ok: Boolean = false,
     val pending: Boolean = false,

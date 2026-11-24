@@ -1382,12 +1382,8 @@
     <string name="theme_store_config_required_summary">請先填寫目錄網址和存取權杖。</string>
     <string name="theme_store_unauthorized">存取權杖缺失或無效</string>
     <string name="theme_store_default_source">預設來源</string>
-    <string name="theme_store_default_auto">自動（故障切換）</string>
+    <string name="theme_store_add_default_source">新增預設來源</string>
     <string name="theme_store_partial_failure">部分來源載入失敗</string>
-    <string name="theme_store_add_source">新增來源</string>
-    <string name="theme_store_new_source">新來源</string>
-    <string name="theme_store_source_name">來源名稱（選填）</string>
-    <string name="theme_store_remove_source">移除來源</string>
     <string name="theme_store_search">搜尋主題、作者或標籤</string>
     <string name="theme_store_sort_default">預設</string>
     <string name="theme_store_sort_hot">熱門度</string>
@@ -1670,8 +1666,7 @@
     <string name="theme_store_upload_restore_title">重新發布主題</string>
     <string name="theme_store_upload_restore_confirm">確認重新發布「%1$s」？</string>
     <string name="theme_store_sources">鏡像來源管理</string>
-    <string name="theme_store_extra_sources">額外鏡像來源</string>
-    <string name="theme_store_sources_summary">管理預設目錄和額外目錄。存取權杖同時用於下載和投稿。</string>
+    <string name="theme_store_sources_summary">管理預設目錄。存取權杖同時用於下載和投稿。</string>
     <string name="theme_store_source_endpoints">介面端點網址</string>
     <string name="theme_store_expand_endpoints">展開端點網址</string>
     <string name="theme_store_collapse_endpoints">收起端點網址</string>

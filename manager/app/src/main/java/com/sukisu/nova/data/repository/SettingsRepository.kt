@@ -66,8 +66,6 @@ interface SettingsRepository {
     
     var themeStoreAdminUrl: String
     
-    var themeStoreExtraSources: List<com.sukisu.nova.data.model.ThemeStoreSourceConfig>
-    
     var themeStoreUploadSource: String
     var themeStoreGridLayout: Boolean
     var homeCardImagePath: String

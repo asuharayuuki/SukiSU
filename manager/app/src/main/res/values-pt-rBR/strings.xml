@@ -984,12 +984,8 @@
     <string name="theme_store_config_required_summary">Defina primeiro a URL do catálogo e o token de acesso no gerenciador.</string>
     <string name="theme_store_unauthorized">O token de acesso está ausente ou é inválido</string>
     <string name="theme_store_default_source">Fonte padrão</string>
-    <string name="theme_store_default_auto">Automático (failover)</string>
+    <string name="theme_store_add_default_source">Adicionar fonte padrão</string>
     <string name="theme_store_partial_failure">Algumas fontes falharam ao carregar</string>
-    <string name="theme_store_add_source">Adicionar fonte</string>
-    <string name="theme_store_new_source">Nova fonte</string>
-    <string name="theme_store_source_name">Nome da fonte (opcional)</string>
-    <string name="theme_store_remove_source">Remover fonte</string>
     <string name="theme_store_search">Pesquisar temas, autores ou tags</string>
     <string name="theme_store_sort_default">Padrão</string>
     <string name="theme_store_sort_hot">Popularidade</string>
@@ -1256,8 +1252,7 @@
     <string name="theme_store_upload_restore_title">Republicar tema</string>
     <string name="theme_store_upload_restore_confirm">Republicar “%1$s” na loja de temas?</string>
     <string name="theme_store_sources">Fontes de temas</string>
-    <string name="theme_store_extra_sources">Fontes adicionais</string>
-    <string name="theme_store_sources_summary">Gerencie o catálogo padrão e os catálogos extras. O token é usado tanto para downloads quanto para envios.</string>
+    <string name="theme_store_sources_summary">Gerencie o catálogo padrão. O token é usado tanto para downloads quanto para envios.</string>
     <string name="theme_store_source_endpoints">Endpoints</string>
     <string name="theme_store_expand_endpoints">Mostrar endpoints</string>
     <string name="theme_store_collapse_endpoints">Ocultar endpoints</string>

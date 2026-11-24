@@ -1027,12 +1027,8 @@
     <string name="theme_store_config_required_summary">Set the catalog URL and access token in the manager first.</string>
     <string name="theme_store_unauthorized">Access token is missing or invalid</string>
     <string name="theme_store_default_source">Default source</string>
-    <string name="theme_store_default_auto">Automatic (failover)</string>
+    <string name="theme_store_add_default_source">Add default source</string>
     <string name="theme_store_partial_failure">Some sources failed to load</string>
-    <string name="theme_store_add_source">Add source</string>
-    <string name="theme_store_new_source">New source</string>
-    <string name="theme_store_source_name">Source name (optional)</string>
-    <string name="theme_store_remove_source">Remove source</string>
     <string name="theme_store_search">Search themes, authors or tags</string>
     <string name="theme_store_sort_default">Default</string>
     <string name="theme_store_sort_hot">Heat</string>
@@ -1315,8 +1311,7 @@
     <string name="theme_store_upload_restore_title">Republish theme</string>
     <string name="theme_store_upload_restore_confirm">Republish “%1$s” to the theme store?</string>
     <string name="theme_store_sources">Theme sources</string>
-    <string name="theme_store_extra_sources">Additional sources</string>
-    <string name="theme_store_sources_summary">Manage the default catalog and extra catalogs. The token is used for both downloads and submissions.</string>
+    <string name="theme_store_sources_summary">Manage the default catalog. The token is used for both downloads and submissions.</string>
     <string name="theme_store_source_endpoints">Endpoints</string>
     <string name="theme_store_expand_endpoints">Show endpoints</string>
     <string name="theme_store_collapse_endpoints">Hide endpoints</string>

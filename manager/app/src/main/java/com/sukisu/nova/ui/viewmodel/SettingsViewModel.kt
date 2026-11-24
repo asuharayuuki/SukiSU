@@ -84,7 +84,6 @@ class SettingsViewModel(
     private val repo: SettingsRepository = SettingsRepositoryImpl()
 ) : ViewModel() {
 
-    /** Parsed once when the view model is created; the store caches by raw JSON afterward. */
     private val initialAppearanceData = AppearanceOverlayStore.data(repo)
 
     private val _uiState = MutableStateFlow(SettingsUiState(
@@ -110,7 +109,6 @@ class SettingsViewModel(
         themeStoreAuthorId = repo.themeStoreAuthorId,
         themeStoreAuthorName = repo.themeStoreAuthorName,
         themeStoreAdminUrl = repo.themeStoreAdminUrl,
-        themeStoreExtraSources = repo.themeStoreExtraSources,
         homeCardImagePath = repo.homeCardImagePath,
         hideHomeCardStatusText = repo.hideHomeCardStatusText,
         hideHomeCardDecoration = repo.hideHomeCardDecoration,
@@ -146,10 +144,6 @@ class SettingsViewModel(
     ))
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
-    /**
-     * The appearance page's own state. It is derived from [uiState] only when a setting actually
-     * changes, so enum/string parsing and the preview inputs never run per recomposition.
-     */
     val colorPaletteState: StateFlow<ColorPaletteUiState> = _uiState
         .map { it.toColorPaletteUiState() }
         .distinctUntilChanged()
@@ -159,11 +153,6 @@ class SettingsViewModel(
             initialValue = _uiState.value.toColorPaletteUiState(),
         )
 
-    /**
-     * Incremented whenever the background seed is about to be recomputed or replaced. A scoring
-     * run only commits its result while its generation is still current, so a slower run started
-     * by an earlier tap cannot overwrite a newer choice.
-     */
     private var seedGeneration = 0
 
     
@@ -986,7 +975,6 @@ homePillScale = HomeStatusStyle.coercePillScale(repo.homePillScale),
 
     fun exportCustomBackground(context: Context, uri: Uri) = exportImages(context, uri)
 
-    /** Applies a validated static overlay. Parsing happens in the editor/package boundary. */
     fun applyCustomAppearance(data: AppearanceOverlayData) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { AppearanceOverlayStore.save(repo, data) }
@@ -3391,7 +3379,7 @@ homePillScale = repo.homePillScale,
     fun setThemeStoreBaseUrl(url: String) {
         val trimmed = url.trim()
         repo.themeStoreBaseUrl = trimmed
-        _uiState.update { it.copy(themeStoreBaseUrl = trimmed) }
+        _uiState.update { it.copy(themeStoreBaseUrl = repo.themeStoreBaseUrl) }
     }
 
     fun setThemeStoreToken(token: String) {
@@ -3404,11 +3392,6 @@ homePillScale = repo.homePillScale,
         val trimmed = url.trim()
         repo.themeStoreAdminUrl = trimmed
         _uiState.update { it.copy(themeStoreAdminUrl = trimmed) }
-    }
-
-    fun setThemeStoreExtraSources(sources: List<com.sukisu.nova.data.model.ThemeStoreSourceConfig>) {
-        repo.themeStoreExtraSources = sources
-        _uiState.update { it.copy(themeStoreExtraSources = sources) }
     }
 
     fun resetAllCustomTexts() {

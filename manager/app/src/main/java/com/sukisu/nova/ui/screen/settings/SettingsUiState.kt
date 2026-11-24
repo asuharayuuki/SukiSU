@@ -137,7 +137,6 @@ data class SettingsUiState(
     val themeStoreAuthorId: String = "",
     val themeStoreAuthorName: String = "",
     val themeStoreAdminUrl: String = "",
-    val themeStoreExtraSources: List<com.sukisu.nova.data.model.ThemeStoreSourceConfig> = emptyList(),
     val homeCardImagePath: String = "",
     val hideHomeCardStatusText: Boolean = false,
     val hideHomeCardDecoration: Boolean = false,

@@ -439,40 +439,17 @@ class ThemeStoreViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    /**
-     * Loads one source, walking the built-in mirror chain (primary → secondary →
-     * tertiary) until one answers without a cached body. The returned source
-     * carries the host that answered, so downloads and uploads stay on it.
-     */
+    fun reloadSources() {
+        if (_uiState.value.needsConsent) return
+        loadJob?.cancel()
+        loadJob = null
+        _uiState.update { it.copy(loading = false, refreshing = false) }
+        load()
+    }
+
     private suspend fun loadSource(
         source: ThemeStoreSource,
-    ): Pair<ThemeStoreSource, Result<ThemeCatalogLoad>> {
-        val first = fetchSource(source, source.baseUrl)
-        if (first.second.getOrNull()?.fromCache == false) {
-            ThemeStoreDefaults.reportReachable(source.baseUrl)
-            return first
-        }
-        // An authentication failure is not a connectivity problem; retrying on
-        // another mirror would hide the real error.
-        if (first.second.exceptionOrNull() is ThemeStoreUnauthorizedException) return first
-        var previousBase = source.baseUrl
-        var nextBase = ThemeStoreDefaults.fallbackBaseUrl(previousBase)
-        var best = first
-        while (nextBase != null) {
-            // Mark only the mirror that just failed so the next launch starts from
-            // the top of the chain again once its cooldown expires.
-            ThemeStoreDefaults.reportUnreachable(previousBase)
-            val attempt = fetchSource(source, nextBase)
-            if (attempt.second.getOrNull()?.fromCache == false) {
-                ThemeStoreDefaults.reportReachable(nextBase)
-                return attempt
-            }
-            if (best.second.isSuccess.not() && attempt.second.isSuccess) best = attempt
-            previousBase = nextBase
-            nextBase = ThemeStoreDefaults.fallbackBaseUrl(nextBase)
-        }
-        return best
-    }
+    ): Pair<ThemeStoreSource, Result<ThemeCatalogLoad>> = fetchSource(source, source.baseUrl)
 
     private suspend fun fetchSource(
         source: ThemeStoreSource,
@@ -2236,35 +2213,19 @@ class ThemeStoreViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun configuredSources(): List<ThemeStoreSource> {
         val result = mutableListOf<ThemeStoreSource>()
-        val builtInBase = ThemeStoreRepository.normalizeBaseUrl(ThemeStoreDefaults.preferredBaseUrl())
         val configuredBase = ThemeStoreDefaults.resolveConfiguredBaseUrl(settings.themeStoreBaseUrl)
         val defaultBase = ThemeStoreRepository.normalizeBaseUrl(configuredBase)
         if (defaultBase != null) {
-            val defaultToken = when {
-                settings.themeStoreToken.isNotBlank() -> settings.themeStoreToken
-                defaultBase == builtInBase -> ""
-                else -> ""
-            }
             result += ThemeStoreSource(
                 id = "default",
                 name = "",
                 baseUrl = defaultBase,
-                token = defaultToken,
+                token = settings.themeStoreToken,
                 adminUrl = adminUrlFor(defaultBase, settings.themeStoreAdminUrl),
                 isDefault = true,
             )
         }
-        settings.themeStoreExtraSources.forEach { config ->
-            val base = ThemeStoreRepository.normalizeBaseUrl(config.baseUrl) ?: return@forEach
-            result += ThemeStoreSource(
-                id = config.id.ifBlank { base },
-                name = config.name,
-                baseUrl = base,
-                token = config.token,
-                adminUrl = adminUrlFor(base, config.adminUrl),
-            )
-        }
-        return result.distinctBy { it.baseUrl }
+        return result
     }
 
     private fun adminUrlFor(base: String, configured: String): String =
@@ -2312,10 +2273,6 @@ internal fun ThemeStoreItem.matchesSearch(
     }
 }
 
-/**
- * Newest submissions first across all mirror sources. Entries without a timestamp keep the
- * server order at the end; the UI only shows the newest [limit] entries.
- */
 internal fun List<UserSubmission>.latestUserSubmissions(limit: Int = 20): List<UserSubmission> =
     sortedWith(compareByDescending { it.submission.submittedAt.orEmpty() })
         .take(limit.coerceAtLeast(0))

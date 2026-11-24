@@ -273,10 +273,11 @@ class SettingsRepositoryImpl : SettingsRepository {
     override var themeStoreBaseUrl: String
         get() {
             val stored = prefs.getString("theme_store_base_url", "") ?: ""
-            // Drop pins to mirrors that no longer ship; an empty value means auto.
-            return if (ThemeStoreDefaults.isRetiredBaseUrl(stored)) "" else stored
+            return ThemeStoreDefaults.resolveConfiguredBaseUrl(stored)
         }
-        set(value) = prefs.edit { putString("theme_store_base_url", value.trim()) }
+        set(value) = prefs.edit {
+            putString("theme_store_base_url", ThemeStoreDefaults.resolveConfiguredBaseUrl(value))
+        }
 
     override var themeStoreToken: String
         get() = themeAccessSetting("theme_store_token") ?: ""
@@ -293,17 +294,6 @@ class SettingsRepositoryImpl : SettingsRepository {
     override var themeStoreAdminUrl: String
         get() = prefs.getString("theme_store_admin_url", "") ?: ""
         set(value) = prefs.edit { putString("theme_store_admin_url", value.trim()) }
-
-    override var themeStoreExtraSources: List<com.sukisu.nova.data.model.ThemeStoreSourceConfig>
-        get() {
-            val raw = themeAccessSetting("theme_store_extra_sources") ?: return emptyList()
-            return runCatching {
-                Json.decodeFromString<List<com.sukisu.nova.data.model.ThemeStoreSourceConfig>>(raw)
-            }.getOrDefault(emptyList())
-        }
-        set(value) {
-            saveThemeAccessSetting("theme_store_extra_sources", Json.encodeToString(value))
-        }
 
     override var themeStoreUploadSource: String
         get() = prefs.getString("theme_store_upload_source", "") ?: ""
