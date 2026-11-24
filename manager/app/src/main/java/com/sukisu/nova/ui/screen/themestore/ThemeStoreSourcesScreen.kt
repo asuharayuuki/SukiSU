@@ -544,9 +544,9 @@ private fun ThemeStoreSourcesMaterial(
 }
 
 /**
- * Manual mirror choice. "Automatic" follows the region/VPN rule; picking a
- * built-in mirror stores it forever, so later region changes cannot override
- * the user's choice.
+ * Manual mirror choice. "Automatic" uses the first reachable built-in mirror
+ * and fails over down the chain; picking a built-in mirror pins it. All hosts
+ * serve the same catalog.
  */
 @Composable
 private fun ThemeStoreDefaultMirrorPicker(

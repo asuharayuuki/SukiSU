@@ -440,7 +440,7 @@ class ThemeStoreViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /**
-     * Loads one source, walking the regional mirror chain (primary → secondary →
+     * Loads one source, walking the built-in mirror chain (primary → secondary →
      * tertiary) until one answers without a cached body. The returned source
      * carries the host that answered, so downloads and uploads stay on it.
      */

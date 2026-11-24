@@ -984,7 +984,7 @@
     <string name="theme_store_config_required_summary">Defina primeiro a URL do catálogo e o token de acesso no gerenciador.</string>
     <string name="theme_store_unauthorized">O token de acesso está ausente ou é inválido</string>
     <string name="theme_store_default_source">Fonte padrão</string>
-    <string name="theme_store_default_auto">Automático (por região)</string>
+    <string name="theme_store_default_auto">Automático (failover)</string>
     <string name="theme_store_partial_failure">Algumas fontes falharam ao carregar</string>
     <string name="theme_store_add_source">Adicionar fonte</string>
     <string name="theme_store_new_source">Nova fonte</string>

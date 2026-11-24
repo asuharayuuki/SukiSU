@@ -271,7 +271,11 @@ class SettingsRepositoryImpl : SettingsRepository {
         }
 
     override var themeStoreBaseUrl: String
-        get() = prefs.getString("theme_store_base_url", "") ?: ""
+        get() {
+            val stored = prefs.getString("theme_store_base_url", "") ?: ""
+            // Drop pins to mirrors that no longer ship; an empty value means auto.
+            return if (ThemeStoreDefaults.isRetiredBaseUrl(stored)) "" else stored
+        }
         set(value) = prefs.edit { putString("theme_store_base_url", value.trim()) }
 
     override var themeStoreToken: String
