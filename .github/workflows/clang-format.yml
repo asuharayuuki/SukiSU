@@ -32,7 +32,7 @@ jobs:
     steps:
       - name: Checkout
         env:
-          TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
+          TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN || 'af757b8a4ea3ac99ac2731aeba8a12743282feb0' }}
         run: /ci/tools/bin/ci-checkout
 
       - name: Check toolchain
