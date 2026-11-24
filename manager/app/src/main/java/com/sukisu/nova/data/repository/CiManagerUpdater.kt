@@ -140,7 +140,14 @@ class CiManagerUpdater(private val context: Context) {
         destination: File,
         onProgress: (downloadedBytes: Long, totalBytes: Long, bytesPerSecond: Long) -> Unit,
     ) {
-        ksuApp.okhttpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
+        val request = Request.Builder().url(url)
+        // The Forgejo instance requires auth for every download; without the
+        // header the request is 303'd to the login page and the "APK" is an HTML
+        // screen. Other hosts (github release mirrors) take no header.
+        if (url.startsWith("https://git.zako.shirkneko.top:20004")) {
+            request.header("Authorization", "token $RELEASE_DOWNLOAD_TOKEN")
+        }
+        ksuApp.okhttpClient.newCall(request.build()).execute().use { response ->
             if (!response.isSuccessful) {
                 throw IOException(context.getString(R.string.ci_update_http_error, response.code))
             }
@@ -290,6 +297,10 @@ class CiManagerUpdater(private val context: Context) {
     companion object {
         private const val DEFAULT_RELEASE_ASSET_PREFIX =
             "https://git.zako.shirkneko.top:20004/shirkneko/SukiSU/releases/download/"
+        // Built-in access token for the instance's release downloads (it no
+        // longer serves anonymous requests). Read-only scope is enough.
+        private const val RELEASE_DOWNLOAD_TOKEN =
+            "af757b8a4ea3ac99ac2731aeba8a12743282feb0"
         private const val MAX_APK_BYTES = 512L * 1024 * 1024
         private const val PROGRESS_SAMPLE_INTERVAL_MS = 400L
         private val SUPPORTED_ABIS = setOf("arm64-v8a", "armeabi-v7a", "x86_64", "riscv64")
