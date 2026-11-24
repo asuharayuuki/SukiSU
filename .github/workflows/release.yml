@@ -221,22 +221,23 @@ jobs:
           } > release/notes.md
           bash .github/scripts/ci/cnb-upload.sh
 
-      - name: Trigger CNB Telegram delivery
+      # Telegram is delivered from the runner: the APKs are already in the
+      # workspace, so no build on CNB is involved.
+      - name: Upload to Telegram
         if: github.ref_type == 'tag'
+        continue-on-error: true
+        timeout-minutes: 20
         env:
-          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
-          CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-release' }}
-          CNB_TAG: ${{ github.ref_name }}
-          CNB_KIND: release
-          THREAD_ID: ${{ vars.MESSAGE_RELEASES_THREAD_ID || '' }}
+          TELEGRAM_APK_DIR: release
+          TITLE: Release
+          MESSAGE_THREAD_ID: ${{ vars.MESSAGE_RELEASES_THREAD_ID }}
           BOT_TOKEN: ${{ vars.BOT_TOKEN || secrets.BOT_TOKEN }}
           CHAT_ID: ${{ vars.CHAT_ID || secrets.CHAT_ID }}
           TG_API_BASE: ${{ vars.TG_API_BASE || 'https://api.telegram.org' }}
-          TITLE: Release
-          BRANCH: ${{ github.ref_name }}
+          GITHUB_EVENT: ${{ toJson(github.event) }}
           RUN_URL: https://git.zako.shirkneko.top:20004/${{ github.repository }}/actions/runs/${{ github.run_number || github.run_id }}
-          EVENT: ${{ toJson(github.event) }}
-        run: bash .github/scripts/ci/telegram-trigger.sh
+          BRANCH: ${{ github.ref_name }}
+        run: bash .github/scripts/ci/telegram-upload.sh
 
       - name: Store the release bundle for LAN handoff
         run: |

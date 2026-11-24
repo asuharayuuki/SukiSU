@@ -264,90 +264,24 @@ jobs:
             "$RELEASE_TITLE" "$GITHUB_REF_NAME" "$CNB_WEB" "$CNB_REPO" "$RELEASE_TAG")"
           export RELEASE_BODY
           bash .github/scripts/ci/forgejo-release.sh
-      - name: Check Telegram configuration
-        id: telegram
-        env:
-          BOT_TOKEN: ${{ vars.BOT_TOKEN || secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ vars.CHAT_ID || secrets.CHAT_ID }}
-        run: |
-          set -eu
-          if [ -n "${BOT_TOKEN:-}" ] && [ -n "${CHAT_ID:-}" ]; then
-            echo "upload=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "upload=false" >> "$GITHUB_OUTPUT"
-            echo "Telegram upload skipped: set BOT_TOKEN and CHAT_ID to enable it"
-          fi
 
-      # Telegram delivery is delegated to CNB so a local network failure cannot
-      # break the build. The CNB pipeline downloads the APKs from the channel's
-      # release, so this runs on main and dev alike; only the tag differs.
-      #
-      # MESSAGE_DEV_THREAD_ID keeps dev drops out of the main topic when it is
-      # set, and falls back to MESSAGE_THREAD_ID when it is not.
-      - name: Trigger CNB Telegram delivery
-        if: ${{ inputs.publish && steps.channel.outputs.publish == 'true' && steps.telegram.outputs.upload == 'true' }}
-        env:
-          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
-          CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-release' }}
-          CNB_TAG: ${{ steps.channel.outputs.tag }}
-          CNB_KIND: manager
-          THREAD_ID: ${{ vars.MESSAGE_THREAD_ID || '' }}
-          DEV_THREAD_ID: ${{ vars.MESSAGE_DEV_THREAD_ID || '' }}
-          BOT_TOKEN: ${{ vars.BOT_TOKEN || secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ vars.CHAT_ID || secrets.CHAT_ID }}
-          TG_API_BASE: ${{ vars.TG_API_BASE || 'https://api.telegram.org' }}
-          TITLE: ${{ steps.channel.outputs.title }}
-          BRANCH: ${{ github.ref_name }}
-          RUN_URL: https://git.zako.shirkneko.top:20004/${{ github.repository }}/actions/runs/${{ github.run_number || github.run_id }}
-          EVENT: ${{ toJson(github.event) }}
-        run: bash .github/scripts/ci/telegram-trigger.sh
-
-      # Manual fallback only: if CNB cannot run the delivery, drop the `if: false`
-      # below and the same split APKs go out directly. It stays off because a
-      # flaky tunnel used to fail the whole job here.
-      - name: Upload to Telegram (legacy, disabled)
-        if: ${{ false }}
+      # Telegram is delivered from the runner: the APKs are already in this
+      # workspace, so no build on CNB is needed to move them, and its traffic
+      # pattern is what got the old repository removed. A delivery failure only
+      # costs the notification.
+      - name: Upload to Telegram
+        if: ${{ inputs.publish && steps.channel.outputs.publish == 'true' }}
+        continue-on-error: true
         timeout-minutes: 20
         env:
+          TELEGRAM_APK_DIR: apks/split
+          TITLE: ${{ steps.channel.outputs.title }}
+          # dev pushes go to their own topic when one is configured.
+          MESSAGE_THREAD_ID: ${{ (github.ref_name == 'dev' && vars.MESSAGE_DEV_THREAD_ID) || vars.MESSAGE_THREAD_ID }}
           CHAT_ID: ${{ vars.CHAT_ID || secrets.CHAT_ID }}
           BOT_TOKEN: ${{ vars.BOT_TOKEN || secrets.BOT_TOKEN }}
+          TG_API_BASE: ${{ vars.TG_API_BASE || 'https://api.telegram.org' }}
           GITHUB_EVENT: ${{ toJson(github.event) }}
-          # The public endpoint again: github.server_url points at the tunnel address,
-          # so the link in the Telegram message would not open for anyone.
           RUN_URL: https://git.zako.shirkneko.top:20004/${{ github.repository }}/actions/runs/${{ github.run_number || github.run_id }}
           BRANCH: ${{ github.ref_name }}
-        run: |
-          set -eu
-          export VERSION="$(git rev-list --count HEAD)"
-          export TITLE="Manager"
-          # Releases go to their own topic; regular builds use the default one.
-          export MESSAGE_THREAD_ID="${{ inputs.release_upload && (vars.MESSAGE_RELEASES_THREAD_ID || secrets.MESSAGE_RELEASES_THREAD_ID) || vars.MESSAGE_THREAD_ID || secrets.MESSAGE_THREAD_ID }}"
-          mapfile -d '' APKS < <(find ./apks/split -type f -name '*.apk' -print0 | sort -z)
-          test "${#APKS[@]}" -gt 0
-
-          # Deleting and re-creating a tag pushes it again and re-runs the whole
-          # release, so the same build must not reach the topic twice.
-          #
-          # The identity of a build is the topic, the ref, the commit AND the bytes
-          # of the APK:
-          #   - the version code is derived from the commit count, so it goes
-          #     backwards on a revert and must not be the key
-          #   - the ref keeps dev, main, tags and pull requests in separate slots
-          #   - the hash means a rebuild of the same commit (different signer,
-          #     different toolchain, changed files in the APK) still uploads
-          code="$(basename "${APKS[0]}" | sed -E 's/.*_([0-9]+)-[a-z0-9_-]+-release\.apk$/\1/')"
-          sha="$(git rev-parse --short=8 HEAD 2>/dev/null || printf '%s' "${GITHUB_SHA:-unknown}" | cut -c1-8)"
-          ref="$(printf '%s' "${GITHUB_REF_NAME:-${GITHUB_REF:-unknown}}" | tr '/' '-')"
-          apk_hash="$(sha256sum "${APKS[0]}" | cut -c1-16)"
-          topic="${MESSAGE_THREAD_ID:-default}"
-          marker="/ci/state/telegram-${topic}-${ref}-${sha}-${apk_hash}.sent"
-          mkdir -p "$(dirname "$marker")"
-          # markers are only useful while the commit is still recent
-          find /ci/state -type f -mtime +30 -delete 2>/dev/null || true
-          if [ -f "$marker" ]; then
-            echo "build ${ref}@${sha} apk ${apk_hash} (version ${code}) was already uploaded to topic ${topic} ($(cat "$marker")), skipping"
-            exit 0
-          fi
-
-          bash .github/scripts/upload-telegram.sh "${APKS[@]}"
-          date -u +%FT%TZ >"$marker"
+        run: bash .github/scripts/ci/telegram-upload.sh

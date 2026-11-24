@@ -93,7 +93,7 @@ jobs:
             .github/scripts/ci/cnb-upload.sh \
             .github/scripts/ci/parallel.sh \
             .github/scripts/ci/ci-checkout.sh \
-            .github/scripts/ci/telegram-trigger.sh \
+            .github/scripts/ci/telegram-upload.sh \
             .github/scripts/ci/forgejo-release.sh \
             .github/scripts/upload-telegram.sh \
             .github/scripts/setup-rust-build.sh; do

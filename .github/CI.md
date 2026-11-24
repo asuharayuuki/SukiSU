@@ -16,9 +16,9 @@ Everything under `.github/` is executed by the CI itself. The two exceptions are
 ├── scripts/ci/      shell libraries sourced inside a job
 │                    common.sh, cnb.sh, cnb-upload.sh, parallel.sh
 │                    plus three scripts a single step calls:
-│                    ci-checkout.sh, telegram-trigger.sh, forgejo-release.sh
-├── scripts/         upload-telegram.sh (inlined as base64 by publish/release),
-│                    setup-rust-build.sh
+│                    ci-checkout.sh, telegram-upload.sh, forgejo-release.sh
+├── scripts/         upload-telegram.sh (called by telegram-upload.sh on the
+│                    runner), setup-rust-build.sh
 ├── riscv64-cargo.toml
 ├── CI.md            this file
 └── CI-TEMPLATE.md   template for writing a new workflow (Chinese)
@@ -236,15 +236,13 @@ normal and dev builds (`MESSAGE_DEV_THREAD_ID` overrides it on dev) and
 `MESSAGE_RELEASES_THREAD_ID` for releases; it is skipped when `BOT_TOKEN` or
 `CHAT_ID` is empty. Only the single Manager variant is published.
 
-`TG_API_BASE` has to be set too. CNB cannot reach `api.telegram.org`, so the
-delivery runs through a Cloudflare Worker proxy: the variable is the Bot API base
-**including the worker's secret path**, e.g.
+`TG_API_BASE` has to be set too. `api.telegram.org` is not reachable from every
+host, so the delivery runs through a Cloudflare Worker proxy: the variable is the
+Bot API base **including the worker's secret path**, e.g.
 `https://tg.oddnexus.top/<secret>`, and `upload-telegram.sh` appends
 `/bot<token>/<method>` to it. The worker only accepts `/<secret>/bot...` and
 answers 404 for everything else, so the secret is what keeps the proxy from being
-used by anyone else — keep it in the repository variable, never in this file or
-in a committed `.cnb.yml`. `telegram-trigger.sh` fails the publishing step when
-the variable is still the default, rather than letting the CNB build time out.
+used by anyone else — keep it in the repository variable, never in this file.
 
 Rolling channels: main publishes `manager-ci` (the tag the manager's CI updater
 reads) and dev publishes `manager-dev`. Both are CNB prereleases, so a dev push
@@ -262,14 +260,13 @@ channels, and `CNB_ARTIFACT_REPO` (default `shirkneko/sukisu-artifacts`) for the
 `<run_id>__*` archives. Publishing back to Forgejo uses `RELEASE_API_TOKEN` when
 set, and the built-in `GITHUB_TOKEN` otherwise.
 
-Telegram delivery is a CNB pipeline in the release repository, not a workflow
-step: `.github/scripts/ci/telegram-trigger.sh` posts to
-`{repo}/-/build/start` with the `api_trigger_telegram` event, and the pipeline
-downloads the release's APKs and runs the inline copy of
-`.github/scripts/upload-telegram.sh`. The pipeline source is versioned here as
-`.github/cnb/sukisu-release.cnb.yml` and has to be committed to the release
-repository as `.cnb.yml` on its default branch — without it the trigger fails and
-nothing reaches Telegram.
+Telegram delivery is a plain workflow step, not a CNB pipeline: the APKs are
+already in the workspace when the build is published, so `telegram-upload.sh`
+sends them from the runner (`apks/split` for a rolling build, `release/` for a
+tag). A marker under `/ci/state` keeps a re-run of the same build from posting
+twice, and the step is `continue-on-error` so a delivery failure only costs the
+notification. CNB is used for artifact storage only — no build is triggered
+there, which is what got the old repository removed.
 
 ## Disabled workflows
 
