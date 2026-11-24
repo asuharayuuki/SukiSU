@@ -68,7 +68,7 @@ jobs:
       CNB_ARTIFACT_REPO: ${{ vars.CNB_ARTIFACT_REPO || 'shirkneko/sukisu-artifacts' }}
       # downloadKpmTools fetches the KPM tools from the instance's release
       # assets; the instance requires auth, so the task attaches this header.
-      KPM_TOOLS_TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN || 'af757b8a4ea3ac99ac2731aeba8a12743282feb0' }}
+      KPM_TOOLS_TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
 
     steps:
 
@@ -78,7 +78,7 @@ jobs:
         # or directory" before the script runs.
         working-directory: ${{ github.workspace }}
         env:
-          TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN || 'af757b8a4ea3ac99ac2731aeba8a12743282feb0' }}
+          TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
         run: /ci/tools/bin/ci-checkout
 
       - name: Provide node and the action sources
@@ -330,7 +330,7 @@ jobs:
 
       - name: Checkout
         env:
-          TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN || 'af757b8a4ea3ac99ac2731aeba8a12743282feb0' }}
+          TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
         run: /ci/tools/bin/ci-checkout
 
       - name: Set artifact name

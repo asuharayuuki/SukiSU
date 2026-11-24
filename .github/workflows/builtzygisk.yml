@@ -49,13 +49,13 @@ jobs:
     steps:
       - name: Checkout
         env:
-          TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN || 'af757b8a4ea3ac99ac2731aeba8a12743282feb0' }}
+          TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
         run: /ci/tools/bin/ci-checkout
 
       - name: Fetch the submodules from the mirrors
         env:
           # The mirror repositories require the same auth as the main one.
-          TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN || 'af757b8a4ea3ac99ac2731aeba8a12743282feb0' }}
+          TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           set -eux
           base="https://git.zako.shirkneko.top:20004/shirkneko"
