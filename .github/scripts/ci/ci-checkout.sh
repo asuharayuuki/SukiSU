@@ -9,38 +9,50 @@
 # job then calls it as `run: /ci/tools/bin/ci-checkout`.
 #
 # Reads GITHUB_REPOSITORY and GITHUB_SHA, and TOKEN (falls back to GITHUB_TOKEN).
+# The token must authenticate every network operation, not just the initial
+# clone: git never persists the Authorization header into the mirror's config,
+# so a mirror cloned anonymously cannot be updated without passing the header
+# to the fetch as well ("could not read Username").
 set -euxo pipefail
 
 remote="${CI_REMOTE:-https://git.zako.shirkneko.top:20004}"
 mirror="/ci/repo-cache/${GITHUB_REPOSITORY}.git"
 token="${TOKEN:-${GITHUB_TOKEN:-}}"
 
+# The token must not appear in the trace of `set -x`, so it is assembled with
+# the trace off like the git commands that use it.
+set +x
+auth=()
+if [ -n "$token" ]; then
+	auth=(-c "http.${remote}/.extraHeader=Authorization: token ${token}")
+fi
+set -x
+
+fetch_mirror() {
+	# The token must not appear in the trace of `set -x`.
+	set +x
+	git "${auth[@]}" --git-dir="$mirror" fetch -q --prune origin \
+		"+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/pull/*"
+	set -x
+}
+
 mkdir -p "$(dirname "$mirror")"
 if [ ! -d "$mirror" ]; then
 	# One bare mirror per repository lives on the runner host, shared by every
 	# job through the /ci volume. Re-downloading the whole history per job made
 	# parallel jobs stall on the same fetch.
-	#
-	# The token must not appear in the trace of `set -x`.
 	set +x
-	if [ -n "$token" ]; then
-		git -c "http.${remote}/.extraHeader=Authorization: token ${token}" \
-			clone -q --mirror "${remote}/${GITHUB_REPOSITORY}.git" "$mirror"
-	else
-		git clone -q --mirror "${remote}/${GITHUB_REPOSITORY}.git" "$mirror"
-	fi
+	git "${auth[@]}" clone -q --mirror "${remote}/${GITHUB_REPOSITORY}.git" "$mirror"
 	set -x
 elif command -v flock >/dev/null 2>&1; then
 	# Concurrent jobs share one mirror, so the fetch has to be serialised or
 	# git fails with "cannot lock ref".
 	(
 		flock 9
-		git --git-dir="$mirror" fetch -q --prune origin \
-			"+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/pull/*"
+		fetch_mirror
 	) 9>"${mirror}.lock"
 else
-	git --git-dir="$mirror" fetch -q --prune origin \
-		"+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" "+refs/pull/*:refs/pull/*"
+	fetch_mirror
 fi
 
 git clone -q --shared --no-checkout "$mirror" .

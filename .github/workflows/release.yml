@@ -26,7 +26,7 @@ jobs:
     steps:
       - name: Checkout
         env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
         run: /ci/tools/bin/ci-checkout
 
       - name: Calculate version code
@@ -108,7 +108,7 @@ jobs:
     steps:
       - name: Checkout
         env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
         run: /ci/tools/bin/ci-checkout
 
       - name: Provide node and the action sources
@@ -261,7 +261,7 @@ jobs:
       # needs the tree as well; it used to be one inline curl block.
       - name: Checkout
         env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
         run: /ci/tools/bin/ci-checkout
 
       # Nothing is uploaded here any more: the assets live on CNB, so this job

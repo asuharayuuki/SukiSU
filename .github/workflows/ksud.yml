@@ -54,7 +54,7 @@ jobs:
     steps:
       - name: Checkout
         env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
         run: /ci/tools/bin/ci-checkout
 
       # Jobs may land on different runners, so artifacts are passed through

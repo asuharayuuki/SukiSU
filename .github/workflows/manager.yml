@@ -75,7 +75,7 @@ jobs:
         # or directory" before the script runs.
         working-directory: ${{ github.workspace }}
         env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
         run: /ci/tools/bin/ci-checkout
 
       - name: Provide node and the action sources
@@ -327,7 +327,7 @@ jobs:
 
       - name: Checkout
         env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
         run: /ci/tools/bin/ci-checkout
 
       - name: Set artifact name
