@@ -498,11 +498,86 @@ ci_summary_artifacts() {
 	} >> "$summary"
 }
 
+# ci_summary_raw TITLE BRANCH PATH...
+#   Job Summary for a rolling channel published as ordinary files: the links
+#   point at `apks/<file>` on BRANCH in the raw repository. cnb-raw-publish.sh
+#   writes the same files and branch, so a link resolves as soon as the step
+#   finished.
+ci_summary_raw() {
+	local title="$1" branch="$2"
+	shift 2
+	local summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
+	[ -n "$summary" ] || return 0
+	local base="" file name size
+	if cnb_enabled; then
+		base="$(ci_cnb_link_base "${CNB_RAW_REPO:-sukisu-nova/Release}")/-/git/raw/${branch}/apks"
+	fi
+	{
+		echo "## ${title}"
+		echo
+		if [ -n "$base" ]; then
+			echo "| 文件 | 大小 | 下载 |"
+			echo "| --- | --- | --- |"
+			for file in "$@"; do
+				name="$(basename "$file")"
+				size="$(du -h "$file" 2>/dev/null | cut -f1)"
+				echo "| \`${name}\` | ${size:-?} | [下载](${base}/${name}) |"
+			done
+			echo
+			echo "> 分支 \`${GITHUB_REF_NAME:-unknown}\` · 提交 \`${GITHUB_SHA:-unknown}\` · 已签名，可直接覆盖安装。"
+		else
+			echo "| 文件 |"
+			echo "| --- |"
+			for file in "$@"; do
+				echo "| \`$(basename "$file")\` |"
+			done
+			echo
+			echo "> 没有 CNB token，产物只留在 runner 的 \`/ci\` 上。"
+		fi
+	} >> "$summary"
+}
+
+# ci_summary_raw_tree TITLE BRANCH DIR
+#   Job Summary for a whole directory published as raw files. The tree keeps
+#   subdirectories (lkm/, ksud/, ksuinit/) that the flat rolling summary does
+#   not have.
+ci_summary_raw_tree() {
+	local title="$1" branch="$2" dir="$3"
+	local summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
+	[ -n "$summary" ] || return 0
+	local base="" file rel size list
+	if cnb_enabled; then
+		base="$(ci_cnb_link_base "${CNB_RAW_REPO:-sukisu-nova/Release}")/-/git/raw/${branch}/apks"
+	fi
+	list="$(mktemp)"
+	find "$dir" -type f | sort >"$list"
+	{
+		echo "## ${title}"
+		echo
+		if [ -n "$base" ]; then
+			echo "| 文件 | 大小 | 下载 |"
+			echo "| --- | --- | --- |"
+			while IFS= read -r file; do
+				[ -n "$file" ] || continue
+				rel="${file#"$dir"/}"
+				size="$(du -h "$file" 2>/dev/null | cut -f1)"
+				echo "| \`${rel}\` | ${size:-?} | [下载](${base}/${rel}) |"
+			done <"$list"
+		else
+			echo "| 文件 |"
+			echo "| --- |"
+			while IFS= read -r file; do
+				[ -n "$file" ] || continue
+				echo "| \`${file#"$dir"/}\` |"
+			done <"$list"
+		fi
+	} >> "$summary"
+	rm -f "$list"
+}
+
 # ci_summary_release TITLE TAG PATH...
-#   Job Summary for a rolling channel: one row per file with its CNB download URL
-#   on release TAG. cnb-upload.sh writes the same TAG, so the links resolve as
-#   soon as the upload step finished. Without a token the table stays and the note
-#   says where the files really are.
+#   Job Summary for a legacy CNB release channel. Kept for older callers; the
+#   current rolling channels use ci_summary_raw.
 ci_summary_release() {
 	local title="$1" tag="$2"
 	shift 2

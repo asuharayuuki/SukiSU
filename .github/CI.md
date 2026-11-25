@@ -14,9 +14,11 @@ Everything under `.github/` is executed by the CI itself. The two exceptions are
 ├── workflows/       one stage per file, each dispatchable on its own
 ├── image/           the CI image definitions (docker build on the runner host)
 ├── scripts/ci/      shell libraries sourced inside a job
-│                    common.sh, cnb.sh, cnb-upload.sh, parallel.sh
-│                    plus three scripts a single step calls:
-│                    ci-checkout.sh, telegram-upload.sh, forgejo-release.sh
+│                    common.sh, cnb.sh, parallel.sh
+│                    plus scripts a single step calls:
+│                    ci-checkout.sh, telegram-upload.sh, forgejo-release.sh,
+│                    cnb-raw-publish.sh, cnb-raw-manifest.py,
+│                    and the legacy cnb-upload.sh
 ├── scripts/         upload-telegram.sh (called by telegram-upload.sh on the
 │                    runner), setup-rust-build.sh
 ├── riscv64-cargo.toml
@@ -177,11 +179,12 @@ so artifacts move through these places, tried in this order by
    are anonymous, and the release is created as a prerelease so the manager's
    stable channel never picks it up.
 
-   The archives live in their own repository, separate from the release
-   repository (`CNB_REPO`, default `shirkneko/sukisu-release`), and releases in
-   it are never created or deleted per run — a release per run, created and
-   deleted on every build, is what got the old `sukisu-result` repository removed
-   for release abuse. The run id lives in the asset name instead, and
+   The archives live in their own repository (`CNB_ARTIFACT_REPO`, default
+   `shirkneko/sukisu-artifacts`), separate from the raw publication repository
+   (`CNB_RAW_REPO`, default `sukisu-nova/Release`), and releases in it are never
+   created or deleted per run — a release per run, created and deleted on every
+   build, is what got the old `sukisu-result` repository removed for release
+   abuse. The run id lives in the asset name instead, and
    `ci_artifact_cnb_prune` deletes the assets of runs older than the newest
    `CI_ARTIFACT_KEEP_RUNS` (default 5), once per run per runner, never touching
    the run that is pruning. Older runs therefore cannot be fetched from CNB any
@@ -244,21 +247,25 @@ Bot API base **including the worker's secret path**, e.g.
 answers 404 for everything else, so the secret is what keeps the proxy from being
 used by anyone else — keep it in the repository variable, never in this file.
 
-Rolling channels: main publishes `manager-ci` (the tag the manager's CI updater
-reads) and dev publishes `manager-dev`. Both are CNB prereleases, so a dev push
-never replaces the build main was tested with and neither enters the stable
-update channel; a dispatch from any other ref signs nothing and publishes
-nothing. Both are deleted and recreated on every build (`CNB_RECREATE=true`):
-CNB keeps the original `published_at` when a release is updated, and its release
-pages only embed the newest ten, so a patched-in-place release would eventually
-be pushed off the page the updater reads.
+Rolling channels: main publishes `manager-ci` and dev publishes `manager-dev`.
+Each channel is a branch in the raw repository (`CNB_RAW_REPO`, default
+`sukisu-nova/Release`), not a CNB release. The branch is a complete snapshot:
+`manifest.json` plus `apks/<files>`. `cnb-raw-publish.sh` force-pushes the
+snapshot, so a dev push never replaces the build main was tested with and the
+repository does not grow by one binary blob per build. The manager reads
+`/-/git/raw/<channel>/manifest.json`; every APK URL in it is a raw link.
 
-CNB needs `CNB_TOKEN` (release read/write; the pruning also needs `repo-code:r`
-to read the archive release). Two optional variables pick the repositories:
-`CNB_REPO` (default `shirkneko/sukisu-release`) for stable releases and the rolling
-channels, and `CNB_ARTIFACT_REPO` (default `shirkneko/sukisu-artifacts`) for the
-`<run_id>__*` archives. Publishing back to Forgejo uses `RELEASE_API_TOKEN` when
-set, and the built-in `GITHUB_TOKEN` otherwise.
+Tagged releases use `release-<tag>` branches, and `stable` contains only the
+manifest for the newest tag release (its asset URLs point at that immutable
+branch). A dispatch from any other ref signs nothing and publishes nothing.
+
+`CNB_RAW_TOKEN` (falling back to `CNB_TOKEN`) needs write access to
+`CNB_RAW_REPO`; keeping it separate lets the publication account differ from
+the one used for the internal artifact transport. `CNB_ARTIFACT_REPO` (default
+`shirkneko/sukisu-artifacts`) is separate and still used for the internal
+`<run_id>__*` archives; those are build-to-build transport, not published
+assets. Publishing back to Forgejo uses `RELEASE_API_TOKEN` when set, and the
+built-in `GITHUB_TOKEN` otherwise.
 
 Telegram delivery is a plain workflow step, not a CNB pipeline: the APKs are
 already in the workspace when the build is published, so `telegram-upload.sh`

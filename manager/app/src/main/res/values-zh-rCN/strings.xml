@@ -1483,7 +1483,7 @@
     <string name="update_sources_ping_hint">Ping 会测试 Release API 延迟，并抽样测速 APK 下载速度。</string>
     <string name="update_sources_default_source">内置源</string>
     <string name="update_sources_codeberg_name">Codeberg 镜像</string>
-    <string name="update_sources_cnb_name">CNB 制品源</string>
+    <string name="update_sources_cnb_name">CNB 直链文件</string>
     <string name="update_sources_custom_sources">自定义源</string>
     <string name="update_sources_default_badge">内置</string>
     <string name="update_sources_pinned_badge">已固定</string>
@@ -1491,6 +1491,7 @@
     <string name="update_sources_platform_github">GitHub · %1$s</string>
     <string name="update_sources_platform_gitea">Gitea / Forgejo · %1$s</string>
     <string name="update_sources_platform_cnb">CNB · %1$s</string>
+    <string name="update_sources_platform_cnb_raw">CNB 直链 · %1$s</string>
     <string name="update_sources_add">添加更新源</string>
     <string name="update_sources_add_title">添加更新源</string>
     <string name="update_sources_url">仓库地址</string>
@@ -1499,6 +1500,7 @@
     <string name="update_sources_detected_github">已识别：GitHub · %1$s</string>
     <string name="update_sources_detected_gitea">已识别：Gitea / Forgejo · %1$s</string>
     <string name="update_sources_detected_cnb">已识别：CNB · %1$s</string>
+    <string name="update_sources_detected_cnb_raw">已识别：CNB 直链 · %1$s</string>
     <string name="update_sources_invalid_url">无法解析仓库地址，请粘贴完整链接</string>
     <string name="update_sources_duplicate">该更新源已存在</string>
     <string name="update_sources_limit">最多只能添加 %1$d 个自定义源</string>

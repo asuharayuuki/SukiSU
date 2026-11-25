@@ -103,8 +103,9 @@ jobs:
     env:
       # Artifacts travel through CNB; without a token they stay on /ci only.
       CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
-      CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-release' }}
+      CNB_RAW_TOKEN: ${{ secrets.CNB_RAW_TOKEN || secrets.CNB_TOKEN }}
       CNB_ARTIFACT_REPO: ${{ vars.CNB_ARTIFACT_REPO || 'shirkneko/sukisu-artifacts' }}
+      CNB_RAW_REPO: ${{ vars.CNB_RAW_REPO || 'sukisu-nova/Release' }}
     steps:
       - name: Checkout
         env:
@@ -173,20 +174,20 @@ jobs:
           test -n "$(ls -A "$out")"
           echo "release files collected in ${out}"
 
-      - name: Upload release to CNB
+      - name: Upload release as raw files
         if: github.ref_type == 'tag'
         env:
-          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
-          CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-release' }}
-          CNB_TAG: ${{ github.ref_name }}
-          CNB_NAME: ${{ github.ref_name }}
-          CNB_ASSETS_DIR: release
-          CNB_BODY_FILE: release/notes.md
-          CNB_PRERELEASE: "false"
-          CNB_MAKE_LATEST: "true"
-          CNB_TARGET_COMMITISH: ${{ vars.CNB_TARGET_COMMITISH || 'main' }}
+          CNB_RAW_TOKEN: ${{ secrets.CNB_RAW_TOKEN || secrets.CNB_TOKEN }}
+          CNB_RAW_REPO: ${{ vars.CNB_RAW_REPO || 'sukisu-nova/Release' }}
+          CNB_RAW_BRANCH: release-${{ github.ref_name }}
+          CNB_RAW_TAG: ${{ github.ref_name }}
+          CNB_RAW_NAME: ${{ github.ref_name }}
+          CNB_RAW_ASSETS_DIR: release
+          CNB_RAW_BODY_FILE: release/notes.md
+          CNB_RAW_PRERELEASE: "false"
+          CNB_RAW_FORCE: "true"
           # Reads the description written on the release page before the tag
-          # was pushed, so CNB shows the same text.
+          # was pushed, so the manifest carries the same text.
           API_TOKEN: ${{ secrets.RELEASE_API_TOKEN || vars.RELEASE_API_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           set -eu
@@ -219,7 +220,25 @@ jobs:
             git log -1 --format='%B'
             echo '```'
           } > release/notes.md
-          bash .github/scripts/ci/cnb-upload.sh
+          bash .github/scripts/ci/cnb-raw-publish.sh
+
+      # The stable channel is only a manifest; its asset URLs point at the
+      # immutable release-<tag> branch written above.
+      - name: Publish the stable manifest
+        if: github.ref_type == 'tag'
+        env:
+          CNB_RAW_TOKEN: ${{ secrets.CNB_RAW_TOKEN || secrets.CNB_TOKEN }}
+          CNB_RAW_REPO: ${{ vars.CNB_RAW_REPO || 'sukisu-nova/Release' }}
+          CNB_RAW_BRANCH: stable
+          CNB_RAW_ASSET_BRANCH: release-${{ github.ref_name }}
+          CNB_RAW_TAG: ${{ github.ref_name }}
+          CNB_RAW_NAME: ${{ github.ref_name }}
+          CNB_RAW_ASSETS_DIR: release
+          CNB_RAW_BODY_FILE: release/notes.md
+          CNB_RAW_PRERELEASE: "false"
+          CNB_RAW_MANIFEST_ONLY: "true"
+          CNB_RAW_FORCE: "true"
+        run: bash .github/scripts/ci/cnb-raw-publish.sh
 
       # Telegram is delivered from the runner: the APKs are already in the
       # workspace, so no build on CNB is involved.
@@ -249,10 +268,13 @@ jobs:
   # modules, ksud, ksuinit and the manager APK. Without this the release only
   # existed on the runner host.
       - name: Write the job summary
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_RAW_TOKEN || secrets.CNB_TOKEN }}
+          CNB_RAW_REPO: ${{ vars.CNB_RAW_REPO || 'sukisu-nova/Release' }}
         run: |
           set -eux
           . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
-          ci_summary_artifacts "release"
+          ci_summary_raw_tree "发行文件" "release-${GITHUB_REF_NAME}" release
 
   publish-release:
     needs: [assemble]
@@ -265,23 +287,22 @@ jobs:
           TOKEN: ${{ secrets.CHECKOUT_TOKEN || vars.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
         run: /ci/tools/bin/ci-checkout
 
-      # Nothing is uploaded here any more: the assets live on CNB, so this job
-      # only points the Forgejo release page at them (the old step pushed 46
-      # files through the tunnel and could take half an hour).
-      - name: Point the release page at CNB
+      # Nothing is uploaded here any more: the files live in the raw branch, so
+      # this job only points the Forgejo release page at that tree.
+      - name: Point the release page at the raw files
         if: github.ref_type == 'tag'
         env:
           # Dedicated token with write:repository. The built-in GITHUB_TOKEN is
           # only a fallback: it may lack release permissions on this instance.
           API_TOKEN: ${{ secrets.RELEASE_API_TOKEN || vars.RELEASE_API_TOKEN || secrets.GITHUB_TOKEN }}
-          CNB_REPO: ${{ vars.CNB_REPO || 'shirkneko/sukisu-release' }}
+          CNB_RAW_REPO: ${{ vars.CNB_RAW_REPO || 'sukisu-nova/Release' }}
           CNB_WEB: ${{ vars.CNB_WEB || 'https://cnb.cool' }}
         run: |
           set -eu
           export RELEASE_TAG="${GITHUB_REF_NAME}"
           export RELEASE_NAME="${GITHUB_REF_NAME}"
           export RELEASE_PRERELEASE=false
-          RELEASE_BODY="$(printf 'Release assets built by CI.\n\n下载 / Download: %s/%s/-/releases/tag/%s\n' \
-            "$CNB_WEB" "$CNB_REPO" "$GITHUB_REF_NAME")"
+          RELEASE_BODY="$(printf 'Release files built by CI.\n\n下载 / Download: %s/%s/-/tree/release-%s\n' \
+            "$CNB_WEB" "$CNB_RAW_REPO" "$GITHUB_REF_NAME")"
           export RELEASE_BODY
           bash .github/scripts/ci/forgejo-release.sh

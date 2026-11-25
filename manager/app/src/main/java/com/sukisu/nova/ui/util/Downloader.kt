@@ -274,6 +274,7 @@ private suspend fun parseReleaseResponse(
     UpdateSourcePlatform.CNB -> parseCnbResponse(source, isCi, body)
     UpdateSourcePlatform.GITHUB,
     UpdateSourcePlatform.GITEA_FORGEJO,
+    UpdateSourcePlatform.CNB_RAW,
     -> parseJsonResponse(source, isCi, body)
 }
 

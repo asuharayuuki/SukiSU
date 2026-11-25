@@ -7,7 +7,9 @@ import kotlinx.serialization.Serializable
  * Hosting platform of an update source. GitHub and Gitea/Forgejo expose the
  * same release JSON shape (`assets[].name`/`browser_download_url`/`body`), but
  * their API roots and download hosts differ. CNB has no anonymous release
- * API, so its web page payload is read instead (see [CnbReleaseParser]).
+ * API, so its legacy release pages are parsed by [CnbReleaseParser]. New CNB
+ * sources use [CNB_RAW]: a `manifest.json` committed to a branch, with assets
+ * served from `/-/git/raw/`.
  */
 @Serializable
 enum class UpdateSourcePlatform {
@@ -18,6 +20,14 @@ enum class UpdateSourcePlatform {
 
     /** cnb.cool; releases are parsed from the public release page. */
     CNB,
+
+    /**
+     * A CNB repository that publishes ordinary files instead of releases.
+     * Each channel keeps a `manifest.json` on its own branch, and the APK
+     * links are raw file URLs. This is the default source now that CNB
+     * releases are no longer used for builds.
+     */
+    CNB_RAW,
 }
 
 /**
@@ -45,7 +55,10 @@ data class UpdateSourceConfig(
     val acceptHeader: String
         get() = when (platform) {
             UpdateSourcePlatform.GITHUB -> "application/vnd.github+json"
-            UpdateSourcePlatform.GITEA_FORGEJO -> "application/json"
+            UpdateSourcePlatform.GITEA_FORGEJO,
+            UpdateSourcePlatform.CNB_RAW,
+            -> "application/json"
+
             UpdateSourcePlatform.CNB -> "text/html"
         }
 
@@ -71,13 +84,30 @@ data class UpdateSourceConfig(
 
             else -> "$baseUrl/$owner/$repo/-/releases"
         }
+
+        // The raw channel stores one manifest per branch. A CI tag maps to the
+        // branch of the same name (`manager-ci`, `manager-dev`); the stable
+        // channel reads the `stable` branch written by the release workflow.
+        UpdateSourcePlatform.CNB_RAW -> {
+            val branch = when {
+                endpoint == UpdateSourceDefaults.STABLE_ENDPOINT ->
+                    UpdateSourceDefaults.RAW_STABLE_BRANCH
+
+                endpoint.startsWith("tags/") -> endpoint.removePrefix("tags/")
+
+                else -> UpdateSourceDefaults.RAW_CI_BRANCH
+            }
+            "$baseUrl/$owner/$repo/-/git/raw/$branch/${UpdateSourceDefaults.RAW_MANIFEST}"
+        }
     }
 
     /** Repository metadata endpoint, used to probe a source without fetching releases. */
     fun repoApiUrl(): String = when (platform) {
         UpdateSourcePlatform.GITHUB -> "https://api.github.com/repos/$owner/$repo"
         UpdateSourcePlatform.GITEA_FORGEJO -> "$baseUrl/api/v1/repos/$owner/$repo"
-        UpdateSourcePlatform.CNB -> "$baseUrl/$owner/$repo"
+        UpdateSourcePlatform.CNB,
+        UpdateSourcePlatform.CNB_RAW,
+        -> "$baseUrl/$owner/$repo"
     }
 
     /** Prefix every release asset URL of this source must start with. */
@@ -90,6 +120,9 @@ data class UpdateSourceConfig(
 
         UpdateSourcePlatform.CNB ->
             "$baseUrl/$owner/$repo/-/releases/download/"
+
+        UpdateSourcePlatform.CNB_RAW ->
+            "$baseUrl/$owner/$repo/-/git/raw/"
     }
 
     fun matches(parsed: ParsedUpdateSource): Boolean =
@@ -107,11 +140,14 @@ data class ParsedUpdateSource(
 )
 
 object UpdateSourceDefaults {
-    /** Default source id; points at the CNB artifact repository. */
+    /**
+     * Default source id. The value stays `cnb` so pins stored by older builds
+     * keep resolving; the platform behind it is now a raw-file repository.
+     */
     const val DEFAULT_ID = "cnb"
     const val DEFAULT_BASE_URL = "https://cnb.cool"
-    const val DEFAULT_OWNER = "shirkneko"
-    const val DEFAULT_REPO = "sukisu-release"
+    const val DEFAULT_OWNER = "sukisu-nova"
+    const val DEFAULT_REPO = "Release"
 
     const val CODEBERG_ID = "codeberg"
     const val CODEBERG_BASE_URL = "https://codeberg.org"
@@ -121,14 +157,19 @@ object UpdateSourceDefaults {
     const val CI_TAG = "manager-ci"
     const val STABLE_ENDPOINT = "latest"
 
+    /** Every raw channel writes this file at the root of its branch. */
+    const val RAW_MANIFEST = "manifest.json"
+    const val RAW_CI_BRANCH = "manager-ci"
+    const val RAW_STABLE_BRANCH = "stable"
+
     /** Upper bound for custom sources; built-in sources are always present. */
     const val MAX_CUSTOM_SOURCES = 10
 
-    /** Default source: CNB artifact repository where CI mirrors manager builds. */
+    /** Default source: CNB raw files where CI publishes manager builds. */
     val DEFAULT = UpdateSourceConfig(
         id = DEFAULT_ID,
         name = "",
-        platform = UpdateSourcePlatform.CNB,
+        platform = UpdateSourcePlatform.CNB_RAW,
         baseUrl = DEFAULT_BASE_URL,
         owner = DEFAULT_OWNER,
         repo = DEFAULT_REPO,
@@ -191,7 +232,9 @@ fun parseUpdateSourceUrl(raw: String): ParsedUpdateSource? {
     val baseUrl = "$scheme://$host$port"
     val platform = when {
         host == "github.com" || host.endsWith(".github.com") -> UpdateSourcePlatform.GITHUB
-        host == "cnb.cool" || host.endsWith(".cnb.cool") -> UpdateSourcePlatform.CNB
+        // New CNB sources use the raw manifest. The legacy CNB release parser
+        // stays in the enum for source entries saved by older builds.
+        host == "cnb.cool" || host.endsWith(".cnb.cool") -> UpdateSourcePlatform.CNB_RAW
         else -> UpdateSourcePlatform.GITEA_FORGEJO
     }
     return ParsedUpdateSource(

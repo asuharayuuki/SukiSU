@@ -316,6 +316,7 @@ private fun UpdateSourceCard(
                                 UpdateSourcePlatform.GITHUB -> R.string.update_sources_platform_github
                                 UpdateSourcePlatform.GITEA_FORGEJO -> R.string.update_sources_platform_gitea
                                 UpdateSourcePlatform.CNB -> R.string.update_sources_platform_cnb
+                                UpdateSourcePlatform.CNB_RAW -> R.string.update_sources_platform_cnb_raw
                             },
                             source.baseUrl,
                         ),
@@ -447,6 +448,7 @@ private fun AddUpdateSourceDialog(
                                 UpdateSourcePlatform.GITHUB -> R.string.update_sources_detected_github
                                 UpdateSourcePlatform.GITEA_FORGEJO -> R.string.update_sources_detected_gitea
                                 UpdateSourcePlatform.CNB -> R.string.update_sources_detected_cnb
+                                UpdateSourcePlatform.CNB_RAW -> R.string.update_sources_detected_cnb_raw
                             },
                             "${parsed.owner}/${parsed.repo} · $host",
                         ),

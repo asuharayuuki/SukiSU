@@ -51,6 +51,7 @@ suspend fun pingUpdateSource(source: UpdateSourceConfig): UpdateSourcePingResult
 
                     UpdateSourcePlatform.GITHUB,
                     UpdateSourcePlatform.GITEA_FORGEJO,
+                    UpdateSourcePlatform.CNB_RAW,
                     -> pickPingAsset(parseJsonAssets(body))
                 }
                 val downloadKbps = assetUrl?.let { measureDownloadKbps(client, it) }

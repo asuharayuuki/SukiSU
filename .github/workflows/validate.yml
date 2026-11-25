@@ -66,7 +66,8 @@ jobs:
             ci_artifact_cnb_put ci_artifact_cnb_prune ci_artifact_cnb_prune_once \
             ci_artifact_names \
             ci_download_artifact ci_download_all_artifacts ci_cnb_link_base \
-            ci_summary_artifacts ci_parallel_acquire ci_parallel_release \
+            ci_summary_artifacts ci_summary_raw ci_summary_raw_tree \
+            ci_parallel_acquire ci_parallel_release \
             cnb_repo cnb_api_base cnb_web_base cnb_enabled cnb_curl cnb_release_id \
             cnb_release_ensure cnb_release_patch cnb_release_assets \
             cnb_release_asset_list cnb_release_delete cnb_tag_delete \
@@ -91,6 +92,8 @@ jobs:
             .github/scripts/ci/common.sh \
             .github/scripts/ci/cnb.sh \
             .github/scripts/ci/cnb-upload.sh \
+            .github/scripts/ci/cnb-raw-publish.sh \
+            .github/scripts/ci/cnb-raw-manifest.py \
             .github/scripts/ci/parallel.sh \
             .github/scripts/ci/ci-checkout.sh \
             .github/scripts/ci/telegram-upload.sh \
