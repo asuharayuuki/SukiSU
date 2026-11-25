@@ -147,7 +147,7 @@ jobs:
 上的 `<run_id>__<name>.tar.gz`）→ Forgejo artifact API。CNB 是跨机器、跨 run 都能用的
 那一层，大文件也走它，不要改回让每个 job 自己往 Forgejo 传。
 
-制品仓（`CNB_ARTIFACT_REPO`）与 release 仓（`CNB_REPO`）分开，而且制品仓里
+制品仓（`CNB_ARTIFACT_REPO`）与发布仓（`CNB_RAW_REPO`）分开，而且制品仓里
 **只有一个 release**：run id 写进 asset 名，不再每个 run 新建/删除 release。
 旧仓库就是因为每次构建都新建一个 `ci-<run_id>` release、又从来不清，被判成
 release 滥用。`ci_artifact_cnb_prune` 只删 **asset**：每个 run 首次归档成功后，
@@ -157,9 +157,9 @@ release 滥用。`ci_artifact_cnb_prune` 只删 **asset**：每个 run 首次归
 
 产物就留在 CNB 上，不再回传到 Forgejo：job summary 里的下载链接直接指
 `https://cnb.cool/<artifact-repo>/-/releases/download/ci-artifacts/<run_id>__<name>.tar.gz`，
-`manager-ci`（main）/ `manager-dev`（dev）的 release body 也只是一张指向
-`CNB_REPO` 的链接表（每次构建删除重建，旧 APK 不会残留，`published_at` 也随之前进），
-分支各自发自己的 tag，互不覆盖。
+`manager-ci`（main）/ `manager-dev`（dev）改为独立分支上的 `manifest.json` 与
+`apks/` 文件，`cnb-raw-publish.sh` 每次覆盖整个分支快照，旧 APK 不会残留；
+分支各自发布，互不覆盖，也不再创建 release。
 Forgejo 上只保留 release 的标题和正文（管理器要解析版本号）。
 
 约定：

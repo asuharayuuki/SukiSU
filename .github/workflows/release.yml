@@ -264,9 +264,9 @@ jobs:
           . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
           ci_artifact_put release "${GITHUB_WORKSPACE}/release/"
 
-  # A tag push publishes a real release with every artifact attached: the kernel
-  # modules, ksud, ksuinit and the manager APK. Without this the release only
-  # existed on the runner host.
+  # A tag push publishes every release file as raw files: the kernel modules,
+  # ksud, ksuinit and the manager APK. The Forgejo release page only links to
+  # the branch; nothing is uploaded to Forgejo.
       - name: Write the job summary
         env:
           CNB_TOKEN: ${{ secrets.CNB_RAW_TOKEN || secrets.CNB_TOKEN }}
