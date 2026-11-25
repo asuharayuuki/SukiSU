@@ -104,7 +104,8 @@ jobs:
       # Artifacts travel through CNB; without a token they stay on /ci only.
       CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
       CNB_RAW_TOKEN: ${{ secrets.CNB_RAW_TOKEN || secrets.CNB_TOKEN }}
-      CNB_ARTIFACT_REPO: ${{ vars.CNB_ARTIFACT_REPO || 'shirkneko/sukisu-artifacts' }}
+      CNB_ARTIFACT_REPO: ${{ vars.CNB_ARTIFACT_REPO || 'sukisu-nova/artifacts' }}
+      CNB_ARTIFACT_TOKEN: ${{ secrets.CNB_ARTIFACT_TOKEN || secrets.CNB_RAW_TOKEN || secrets.CNB_TOKEN }}
       CNB_RAW_REPO: ${{ vars.CNB_RAW_REPO || 'sukisu-nova/Release' }}
     steps:
       - name: Checkout

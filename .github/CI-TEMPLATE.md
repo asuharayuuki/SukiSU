@@ -124,8 +124,9 @@ jobs:
     env:
       # 产物经 CNB 中转；没有 token 时只留在 /ci 并告警
       CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
-      # 制品仓只放 `<run_id>__<name>.tar.gz`，与 release 仓分开，且只保留最近 5 次 run
-      CNB_ARTIFACT_REPO: ${{ vars.CNB_ARTIFACT_REPO || 'shirkneko/sukisu-artifacts' }}
+      # 制品仓每次 run 一个分支（`run-<run_id>`），只保留最近 5 次 run，不用 release
+      CNB_ARTIFACT_REPO: ${{ vars.CNB_ARTIFACT_REPO || 'sukisu-nova/artifacts' }}
+      CNB_ARTIFACT_TOKEN: ${{ secrets.CNB_ARTIFACT_TOKEN || secrets.CNB_RAW_TOKEN || secrets.CNB_TOKEN }}
 
     steps:
       - name: Upload the build artifact
@@ -143,20 +144,24 @@ jobs:
           # 或者：ci_download_all_artifacts artifacts
 ```
 
-查找顺序：`/ci` 卷 → EasyTier peer（18080）→ CNB（制品仓里 `ci-artifacts` release
-上的 `<run_id>__<name>.tar.gz`）→ Forgejo artifact API。CNB 是跨机器、跨 run 都能用的
-那一层，大文件也走它，不要改回让每个 job 自己往 Forgejo 传。
+查找顺序：`/ci` 卷 → EasyTier peer（18080）→ CNB（制品仓里该 run 分支上的
+`<name>/` 目录）→ Forgejo artifact API。CNB 是跨机器、跨 run 都能用的那一层，
+大文件也走它，不要改回让每个 job 自己往 Forgejo 传。
 
-制品仓（`CNB_ARTIFACT_REPO`）与发布仓（`CNB_RAW_REPO`）分开，而且制品仓里
-**只有一个 release**：run id 写进 asset 名，不再每个 run 新建/删除 release。
-旧仓库就是因为每次构建都新建一个 `ci-<run_id>` release、又从来不清，被判成
-release 滥用。`ci_artifact_cnb_prune` 只删 **asset**：每个 run 首次归档成功后，
-把第 6 个及更早的 run 的 asset 删掉，上限由 `CI_ARTIFACT_KEEP_RUNS` 控制（默认 5），
-正在清的那个 run 永远不删。所以只保证最近 5 次 run 能跨机器/跨 run 取回，更早的
+制品仓（`CNB_ARTIFACT_REPO`）与发布仓（`CNB_RAW_REPO`）分开。制品仓里
+**一次 run 一个分支**（`run-<run_id>`），每个产物是分支下的一个目录，目录里的
+`manifest.json` 列出文件；完全没有 release。旧仓库就是因为每次构建都新建一个
+release 又从来不清，被判成 release 滥用。`ci_artifact_cnb_prune` 每个 run 首次
+发布成功后，把第 6 个及更早的 run 的分支整个删掉，上限由 `CI_ARTIFACT_KEEP_RUNS`
+控制（默认 5），正在清的那个 run 永远不删。删分支同时让这些文件变成不可达对象，
+不会在历史里越堆越大。所以只保证最近 5 次 run 能跨机器/跨 run 取回，更早的
 只剩产出它的那台机器的 `/ci`。
 
+上传不需要先下载已有产物：拉取时用 `--filter=blob:none`，只取树对象，再只推自己
+新增的文件。
+
 产物就留在 CNB 上，不再回传到 Forgejo：job summary 里的下载链接直接指
-`https://cnb.cool/<artifact-repo>/-/releases/download/ci-artifacts/<run_id>__<name>.tar.gz`，
+`https://cnb.cool/<artifact-repo>/-/git/raw/run-<run_id>/<name>/<file>`，
 `manager-ci`（main）/ `manager-dev`（dev）改为独立分支上的 `manifest.json` 与
 `apks/` 文件，`cnb-raw-publish.sh` 每次覆盖整个分支快照，旧 APK 不会残留；
 分支各自发布，互不覆盖，也不再创建 release。

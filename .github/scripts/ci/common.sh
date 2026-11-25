@@ -19,34 +19,33 @@ CI_REMOTE="${CI_REMOTE:-https://git.zako.shirkneko.top:20004}"
 CI_ARTIFACT_ROOT="${CI_ARTIFACT_ROOT:-/ci/runs/${GITHUB_RUN_ID:-local}}"
 # CNB carries artifacts between runners. /ci only exists on the host that wrote
 # the file, and the Forgejo artifact API is the slow endpoint, so every artifact
-# is archived on CNB as `<run_id>__<name>.tar.gz` on ONE release per repository.
+# is published as ordinary files: one branch per run (`run-<run_id>`), one
+# directory per artifact. A download is a raw URL, pruning a run is deleting its
+# branch, and no CNB release is created anywhere.
 #
-# The archives live in their own repository (CNB_ARTIFACT_REPO) so the release
-# repository only holds what the manager reads: stable releases, manager-ci and
-# manager-dev. Inside the archive repository nothing is ever created or deleted
-# as a release: reusing a fixed release and rotating assets keeps CNB from seeing
-# a stream of releases, which is what got the old `sukisu-result` repository
-# removed. Only the assets of runs older than CI_ARTIFACT_KEEP_RUNS are deleted
-# (see ci_artifact_cnb_prune).
-CI_ARTIFACT_CNB_TAG="${CI_ARTIFACT_CNB_TAG:-ci-artifacts}"
+# The files live in their own repository (CNB_ARTIFACT_REPO) so the repository
+# the manager reads only holds published builds. Branches keep the traffic
+# invisible to the release API, which is what got the old `sukisu-result`
+# repository removed.
+CI_ARTIFACT_CNB_BRANCH_PREFIX="${CI_ARTIFACT_CNB_BRANCH_PREFIX:-run-}"
 CI_ARTIFACT_KEEP_RUNS="${CI_ARTIFACT_KEEP_RUNS:-5}"
 
-# The CNB API calls live in cnb.sh, shared with cnb-upload.sh. Prefer the
-# directory this file lives in (BASH_SOURCE), then the workspace, so sourcing
-# works from any cwd and from a step script that was written to a temp path.
+# The CNB file helpers live in cnb-raw-git.sh. Prefer the directory this file
+# lives in (BASH_SOURCE), then the workspace, so sourcing works from any cwd and
+# from a step script that was written to a temp path.
 CI_SCRIPTS_DIR=""
 if [ -n "${BASH_VERSION:-}" ]; then
 	eval 'CI_SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"'
 fi
-if [ -n "$CI_SCRIPTS_DIR" ] && [ -f "${CI_SCRIPTS_DIR}/cnb.sh" ]; then
-	# shellcheck disable=SC1091  # computed path; cnb.sh is checked on its own
-	. "${CI_SCRIPTS_DIR}/cnb.sh"
-elif [ -f "${GITHUB_WORKSPACE:-.}/.github/scripts/ci/cnb.sh" ]; then
+if [ -n "$CI_SCRIPTS_DIR" ] && [ -f "${CI_SCRIPTS_DIR}/cnb-raw-git.sh" ]; then
+	# shellcheck disable=SC1091  # computed path; the library is checked on its own
+	. "${CI_SCRIPTS_DIR}/cnb-raw-git.sh"
+elif [ -f "${GITHUB_WORKSPACE:-.}/.github/scripts/ci/cnb-raw-git.sh" ]; then
 	CI_SCRIPTS_DIR="${GITHUB_WORKSPACE:-.}/.github/scripts/ci"
 	# shellcheck disable=SC1091
-	. "${CI_SCRIPTS_DIR}/cnb.sh"
+	. "${CI_SCRIPTS_DIR}/cnb-raw-git.sh"
 else
-	echo "common.sh: cnb.sh not found next to the script or in \$GITHUB_WORKSPACE" >&2
+	echo "common.sh: cnb-raw-git.sh not found next to the script or in \$GITHUB_WORKSPACE" >&2
 	exit 1
 fi
 
@@ -139,131 +138,98 @@ ci_artifact_put() {
 	ci_artifact_cnb_put "$name" "$dest"
 }
 
-# ci_artifact_cnb_tag -> the one release that holds every run's archives
-#   Tags are never derived from a run: a release per run means creating and
-#   deleting a release on every build, and CNB removed the repository that did
-#   that. The run id lives in the asset name instead.
-ci_artifact_cnb_tag() {
-	printf '%s\n' "$CI_ARTIFACT_CNB_TAG"
-}
-
-# ci_artifact_cnb_asset RUN_ID NAME -> asset name for that run's artifact
-ci_artifact_cnb_asset() {
-	printf '%s__%s.tar.gz\n' "${1:-${GITHUB_RUN_ID:-local}}" "$2"
-}
-
 # ci_artifact_cnb_repo
-#   The repository that holds the archives, separate from CNB_REPO (stable
-#   releases and rolling channels). Splitting them keeps the repository the
-#   manager reads free of CI traffic, and keeps the archives away from the
-#   publishing token's stable channel.
+#   The repository that holds the archives, separate from CNB_RAW_REPO (published
+#   builds). Splitting them keeps the repository the manager reads free of CI
+#   traffic, and keeps the archives away from the publishing token's channel.
 ci_artifact_cnb_repo() {
-	printf '%s\n' "${CNB_ARTIFACT_REPO:-shirkneko/sukisu-artifacts}"
+	printf '%s\n' "${CNB_ARTIFACT_REPO:-sukisu-nova/artifacts}"
+}
+
+# ci_artifact_cnb_branch [RUN_ID]
+#   One branch per run, named after the run id so the age of a branch is visible
+#   without reading it. A branch is a complete snapshot, so replacing an artifact
+#   is a new commit and dropping a run is deleting the branch.
+ci_artifact_cnb_branch() {
+	printf '%s%s\n' "$CI_ARTIFACT_CNB_BRANCH_PREFIX" "${1:-${GITHUB_RUN_ID:-local}}"
+}
+
+# ci_artifact_cnb_enabled
+#   Write access to the artifact repository. CNB_ARTIFACT_TOKEN wins so the
+#   archive repository can use its own account; the publication token is the
+#   fallback.
+ci_artifact_cnb_enabled() {
+	[ -n "$(cnb_raw_token)" ]
 }
 
 # ci_artifact_cnb_put NAME DIR
-#   Archives DIR (without manifest.json, which is a /ci-local detail) and stores
-#   it as `<run_id>__<name>.tar.gz` on CNB. A missing token or a CNB outage only
-#   warns: this host still has the /ci copy, and the workflows fall back to the
-#   Forgejo artifact API.
+#   Publishes DIR as `<name>/` on this run's branch. A missing token or a CNB
+#   outage only warns: this host still has the /ci copy, and the workflows fall
+#   back to the Forgejo artifact API.
 ci_artifact_cnb_put() {
-	local name="$1" dir="$2" tag id asset archive archived repo
-	if ! cnb_enabled; then
-		echo "artifact ${name}: CNB_TOKEN is not set, keeping it on /ci only" >&2
+	local name="$1" dir="$2" repo branch work
+	if ! ci_artifact_cnb_enabled; then
+		echo "artifact ${name}: no CNB token, keeping it on /ci only" >&2
 		return 0
 	fi
 	repo="$(ci_artifact_cnb_repo)"
-	tag="$(ci_artifact_cnb_tag)"
-	asset="$(ci_artifact_cnb_asset "${GITHUB_RUN_ID:-local}" "$name")"
-	archive="$(mktemp)"
-	if ! tar -czf "$archive" --exclude=manifest.json -C "$dir" .; then
-		echo "artifact ${name}: cannot archive ${dir}" >&2
-		rm -f "$archive"
+	branch="$(ci_artifact_cnb_branch)"
+	# The manifest is what the download side follows, so it is regenerated here
+	# rather than trusted to exist: a caller that writes the directory itself
+	# would otherwise publish files nobody can discover.
+	ci_artifact_manifest "$dir"
+	work="$(mktemp -d)"
+	if ! cnb_raw_git_init "$work" "$repo"; then
+		echo "artifact ${name}: cannot prepare the CNB checkout" >&2
+		rm -rf "$work" 2>/dev/null || true
 		return 0
 	fi
-	# The artifact repository does not contain this build's commit, so
-	# target_commitish has to be a ref of that repository: CNB rejects a foreign
-	# SHA with HTTP 400. prerelease=true keeps the dump out of the manager's
-	# stable channel, which picks the newest non-prerelease release.
-	if ! id="$(cnb_release_ensure "$tag" "$tag" "${CNB_TARGET_COMMITISH:-main}" "" true false "$repo")"; then
-		echo "artifact ${name}: cannot reach CNB, keeping the /ci copy only" >&2
-		rm -f "$archive"
-		return 0
-	fi
-	# Upload, then prove the copy is listed: CNB can accept an upload for a
-	# release that a concurrent create left behind, and an asset there would be
-	# silently invisible downstream.
-	archived=0
-	if cnb_asset_put "$archive" "$asset" "$id" "$repo" &&
-		cnb_release_assets "$tag" "$repo" | grep -qxF "$asset"; then
-		archived=1
-	fi
-	if [ "$archived" = 1 ]; then
-		echo "artifact ${name} archived on CNB (${repo} ${tag}/${asset})"
+	mkdir -p "${work}/${name}"
+	cp -a "$dir"/. "${work}/${name}"/
+	if cnb_raw_git_publish "$work" "$branch" "$name" \
+		"artifact ${name} (run ${GITHUB_RUN_ID:-local})"; then
+		echo "artifact ${name} archived on CNB (${repo} ${branch}/${name})"
 		ci_artifact_cnb_prune_once
 	else
 		echo "artifact ${name}: CNB upload failed, keeping the /ci copy only" >&2
 	fi
-	rm -f "$archive"
+	rm -rf "$work" "${work}-askpass" 2>/dev/null || true
 	return 0
 }
 
 # ci_artifact_cnb_prune
-#   Deletes the assets of every run older than the newest CI_ARTIFACT_KEEP_RUNS.
-#   Releases themselves are never created or deleted here: the archive
-#   repository holds one release (`ci-artifacts`) whose assets carry the run id,
-#   because a release per run -- created and deleted on every build -- is what
-#   got the old `sukisu-result` repository removed for release abuse.
-#
-#   The run id in the asset name decides the order, not published_at. The run
-#   doing the pruning is never a candidate: a run can be far down the id order
-#   while still uploading, and deleting its own assets mid-run would strand the
-#   files the other jobs are about to publish. A token without `repo-code:r`
-#   cannot read the release, so that only warns.
+#   Deletes the branches of every run older than the newest CI_ARTIFACT_KEEP_RUNS.
+#   The run id in the branch name decides the order. The run doing the pruning is
+#   never a candidate: a run can be far down the id order while still uploading,
+#   and deleting its branch mid-run would strand the files the other jobs are
+#   about to publish.
 ci_artifact_cnb_prune() {
-	local repo keep tag id assets drops current runs tmp
+	local repo keep current ids drops id
 	repo="$(ci_artifact_cnb_repo)"
 	keep="${CI_ARTIFACT_KEEP_RUNS:-5}"
 	case "$keep" in
 	'' | *[!0-9]*) keep=5 ;;
 	esac
 	[ "$keep" -gt 0 ] || return 0
-	tag="$(ci_artifact_cnb_tag)"
-	id="$(cnb_release_id "$tag" "$repo")"
-	[ -n "$id" ] || return 0
-	assets="$(cnb_release_asset_list "$tag" "$repo")"
-	[ -n "$assets" ] || return 0
-
 	current="${GITHUB_RUN_ID:-local}"
-	# Every run id present in the release, newest first. The cut keeps the
-	# newest CI_ARTIFACT_KEEP_RUNS runs; the running one is then excluded from
-	# the deletions even when it sits below the cut.
-	runs="$(printf '%s\n' "$assets" |
-		awk -F'\t' '{ n = $2; sub(/__.*/, "", n); if (n ~ /^[0-9]+$/) print n }' |
-		sort -k1,1nr -u)" || true
-	drops="$(printf '%s\n' "$runs" | tail -n +$((keep + 1)) | grep -vx "$current")" || true
-	[ -n "$drops" ] || return 0
-
-	tmp="$(mktemp)"
-	printf '%s\n' "$drops" >"$tmp"
-	printf '%s\n' "$assets" |
-		awk -F'\t' -v f="$tmp" '
-			BEGIN { while ((getline l < f) > 0) drop[l] = 1 }
-			{ n = $2; sub(/__.*/, "", n); if (n in drop) print $1 "\t" $2 }' |
-		while IFS="$(printf '\t')" read -r asset_id asset_name; do
-			[ -n "$asset_id" ] || continue
-			echo "cnb: pruning artifact ${asset_name} (keeping ${keep} runs)" >&2
-			cnb_asset_delete "$id" "$asset_id" "$repo" || true
-		done
-	rm -f "$tmp"
+	ids="$(cnb_raw_branch_list "$repo" |
+		sed -n "s/^${CI_ARTIFACT_CNB_BRANCH_PREFIX}//p" |
+		grep '^[0-9][0-9]*$' |
+		sort -nr -u)" || true
+	[ -n "$ids" ] || return 0
+	drops="$(printf '%s\n' "$ids" | tail -n +$((keep + 1)) | grep -vx "$current")" || true
+	for id in $drops; do
+		echo "cnb: pruning artifact branch $(ci_artifact_cnb_branch "$id") (keeping ${keep} runs)" >&2
+		cnb_raw_branch_delete "$(ci_artifact_cnb_branch "$id")" "$repo" || true
+	done
 	return 0
 }
 
 # ci_artifact_cnb_prune_once
 #   ci_artifact_cnb_prune, at most once per run per runner: every producer job
-#   archives, and each of them would otherwise walk the release's asset list
+#   archives, and each of them would otherwise list the repository's branches
 #   again. /ci is per host, so this is per host as well, and concurrent prunes
-#   only target the same aged assets (deletion is idempotent).
+#   only target the same aged branches (deletion is idempotent).
 ci_artifact_cnb_prune_once() {
 	local marker="${CI_ARTIFACT_ROOT}/.cnb-prune.done"
 	if ! mkdir "$marker" 2>/dev/null; then
@@ -280,12 +246,9 @@ ci_artifact_cnb_prune_once() {
 #   the `manager-ci/<sha>` tree. The Forgejo API is the last resort.
 ci_artifact_names() {
 	local run_id="${1:-${GITHUB_RUN_ID:-0}}" names="" local_dir entry
-	if cnb_enabled; then
-		names="$(cnb_release_assets "$(ci_artifact_cnb_tag)" "$(ci_artifact_cnb_repo)" |
-			awk -v p="${run_id}__" 'index($0, p) == 1 {
-				sub(/\.tar\.gz$/, "")
-				print substr($0, length(p) + 1)
-			}' | sort -u)"
+	if ci_artifact_cnb_enabled; then
+		names="$(cnb_raw_list_dirs "$(ci_artifact_cnb_repo)" "$(ci_artifact_cnb_branch "$run_id")" |
+			sed '/^$/d' | sort -u)"
 	fi
 	local_dir="/ci/runs/${run_id}"
 	if [ -d "$local_dir" ]; then
@@ -343,7 +306,9 @@ ci_download_artifact() {
 			"http://${host}:18080/${run_id}/${name}/manifest.json"; then
 			continue
 		fi
-		files="$(jq -r '.files[]' "$manifest")"
+		# tr strips CR: a manifest written or edited on Windows would otherwise
+		# yield "file\r" and every download URL built from it would 404.
+		files="$(jq -r '.files[]' "$manifest" | tr -d '\r')"
 		[ -n "$files" ] || continue
 		ok=1
 		for file in $files; do
@@ -370,20 +335,45 @@ ci_download_artifact() {
 	done
 	rm -f "$manifest"
 
-	# CNB: the path that works across hosts and across runs. Anonymous download,
-	# and the archive keeps the directory layout the peer transfer cannot.
-	local cnb_tag cnb_repo asset archive
-	cnb_tag="$(ci_artifact_cnb_tag)"
+	# CNB: the path that works across hosts and across runs. The run's branch
+	# carries one directory per artifact and manifest.json lists its files, so the
+	# transfer is plain anonymous downloads and keeps the directory layout the
+	# peer transfer cannot.
+	local cnb_repo cnb_branch base manifest files file ok
 	cnb_repo="$(ci_artifact_cnb_repo)"
-	asset="$(ci_artifact_cnb_asset "$run_id" "$name")"
-	archive="$(mktemp)"
-	if cnb_asset_get "$asset" "$archive" "$cnb_tag" "$cnb_repo" 2>/dev/null &&
-		tar -xzf "$archive" -C "$dest" 2>/dev/null; then
-		rm -f "$archive"
-		echo "artifact ${name} downloaded from CNB (${cnb_repo} ${cnb_tag}/${asset})"
-		return 0
+	cnb_branch="$(ci_artifact_cnb_branch "$run_id")"
+	base="$(cnb_raw_url "$cnb_repo" "$cnb_branch" "$name")"
+	manifest="$(mktemp)"
+	if curl -fsS -L --retry 3 --retry-all-errors --retry-delay 2 \
+		--connect-timeout 10 --max-time 120 -o "$manifest" "${base}/manifest.json" 2>/dev/null; then
+		files="$(jq -r '.files[]?' "$manifest" 2>/dev/null | tr -d '\r' || true)"
+		ok=1
+		if [ -z "$files" ]; then
+			ok=0
+		fi
+		for file in $files; do
+			case "$file" in
+			'' | /* | .. | ../* | */.. | */../*)
+				echo "artifact ${name}: refusing unsafe file name ${file}" >&2
+				ok=0
+				break
+				;;
+			esac
+			mkdir -p "${dest}/$(dirname "$file")"
+			if ! curl -fL --retry 3 --retry-all-errors --retry-delay 2 \
+				--connect-timeout 10 --max-time 1800 --progress-bar \
+				-o "${dest}/${file}" "${base}/$(printf '%s' "$file" | sed 's/ /%20/g')"; then
+				ok=0
+				break
+			fi
+		done
+		if [ "$ok" = 1 ]; then
+			rm -f "$manifest"
+			echo "artifact ${name} downloaded from CNB (${cnb_repo} ${cnb_branch}/${name})"
+			return 0
+		fi
 	fi
-	rm -f "$archive"
+	rm -f "$manifest"
 
 	local token="${TOKEN:-${GITHUB_TOKEN:-}}"
 	[ -n "$token" ] || {
@@ -441,8 +431,8 @@ ci_download_all_artifacts() {
 }
 
 # ci_cnb_link_base [REPO]
-#   The CNB download prefix for REPO (default: the release repository), with the
-#   account name percent-encoded by one character.
+#   The CNB download prefix for REPO (default: the publication repository), with
+#   the account name percent-encoded by one character.
 #
 #   The runner masks every occurrence of a secret value in job output -- on this
 #   instance that value is the account name, so a plain
@@ -451,7 +441,7 @@ ci_download_all_artifacts() {
 #   verified) and no longer matches the masker.
 ci_cnb_link_base() {
 	local source owner repo first rest hex
-	source="${1:-${CNB_REPO:-shirkneko/sukisu-release}}"
+	source="${1:-${CNB_RAW_REPO:-sukisu-nova/Release}}"
 	owner="${source%%/*}"
 	repo="${source#*/}"
 	first="${owner%"${owner#?}"}"
@@ -465,26 +455,41 @@ ci_cnb_link_base() {
 }
 
 # ci_summary_artifacts NAME...
-#   Job Summary: one row per artifact with its CNB download URL. CNB is where the
-#   artifacts actually live (`<run_id>__<name>.tar.gz` on the archive
-#   repository's single release), so the link resolves as soon as the producer
-#   archived the file; nothing is copied back to Forgejo.
+#   Job Summary: one row per file with its raw download URL. The files live on
+#   this run's branch of the archive repository, so a link resolves as soon as
+#   the producer published it; nothing is copied back to Forgejo.
 ci_summary_artifacts() {
 	local summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
 	[ -n "$summary" ] || return 0
-	local name base="" asset
-	if cnb_enabled; then
-		base="$(ci_cnb_link_base "$(ci_artifact_cnb_repo)")/-/releases/download/$(ci_artifact_cnb_tag)"
+	local name base="" dir file rel size list
+	if ci_artifact_cnb_enabled; then
+		base="$(ci_cnb_link_base "$(ci_artifact_cnb_repo)")/-/git/raw/$(ci_artifact_cnb_branch)"
 	fi
 	{
 		echo "## 构建产物"
 		echo
 		if [ -n "$base" ]; then
-			echo "| Artifact | 下载 |"
-			echo "| --- | --- |"
+			echo "| Artifact | 文件 | 大小 | 下载 |"
+			echo "| --- | --- | --- | --- |"
 			for name in "$@"; do
-				asset="$(ci_artifact_cnb_asset "${GITHUB_RUN_ID:-local}" "$name")"
-				echo "| \`${name}\` | [下载](${base}/${asset}) |"
+				dir="${CI_ARTIFACT_ROOT}/${name}"
+				list="$(mktemp)"
+				if [ -d "$dir" ]; then
+					find "$dir" -type f ! -name manifest.json | sort >"$list"
+				fi
+				if [ -s "$list" ]; then
+					while IFS= read -r file; do
+						[ -n "$file" ] || continue
+						rel="${file#"$dir"/}"
+						size="$(du -h "$file" 2>/dev/null | cut -f1)"
+						echo "| \`${name}\` | \`${rel}\` | ${size:-?} | [下载](${base}/${name}/${rel}) |"
+					done <"$list"
+				else
+					# The producer runs this step, but a rerun may not; the manifest
+					# is always there and lists the same files.
+					echo "| \`${name}\` | | | [清单](${base}/${name}/manifest.json) |"
+				fi
+				rm -f "$list"
 			done
 		else
 			echo "| Artifact |"
@@ -509,7 +514,7 @@ ci_summary_raw() {
 	local summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
 	[ -n "$summary" ] || return 0
 	local base="" file name size
-	if cnb_enabled; then
+	if ci_artifact_cnb_enabled; then
 		base="$(ci_cnb_link_base "${CNB_RAW_REPO:-sukisu-nova/Release}")/-/git/raw/${branch}/apks"
 	fi
 	{
@@ -546,7 +551,7 @@ ci_summary_raw_tree() {
 	local summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
 	[ -n "$summary" ] || return 0
 	local base="" file rel size list
-	if cnb_enabled; then
+	if ci_artifact_cnb_enabled; then
 		base="$(ci_cnb_link_base "${CNB_RAW_REPO:-sukisu-nova/Release}")/-/git/raw/${branch}/apks"
 	fi
 	list="$(mktemp)"
@@ -573,43 +578,6 @@ ci_summary_raw_tree() {
 		fi
 	} >> "$summary"
 	rm -f "$list"
-}
-
-# ci_summary_release TITLE TAG PATH...
-#   Job Summary for a legacy CNB release channel. Kept for older callers; the
-#   current rolling channels use ci_summary_raw.
-ci_summary_release() {
-	local title="$1" tag="$2"
-	shift 2
-	local summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
-	[ -n "$summary" ] || return 0
-	local base="" file name size
-	if cnb_enabled; then
-		base="$(ci_cnb_link_base)/-/releases/download/${tag}"
-	fi
-	{
-		echo "## ${title}"
-		echo
-		if [ -n "$base" ]; then
-			echo "| 文件 | 大小 | 下载 |"
-			echo "| --- | --- | --- |"
-			for file in "$@"; do
-				name="$(basename "$file")"
-				size="$(du -h "$file" 2>/dev/null | cut -f1)"
-				echo "| \`${name}\` | ${size:-?} | [下载](${base}/${name}) |"
-			done
-			echo
-			echo "> 分支 \`${GITHUB_REF_NAME:-unknown}\` · 提交 \`${GITHUB_SHA:-unknown}\` · 已签名，可直接覆盖安装。"
-		else
-			echo "| 文件 |"
-			echo "| --- |"
-			for file in "$@"; do
-				echo "| \`$(basename "$file")\` |"
-			done
-			echo
-			echo "> 没有 CNB token，产物只留在 runner 的 \`/ci\` 上。"
-		fi
-	} >> "$summary"
 }
 
 # ci_summary_graph TITLE EDGE...

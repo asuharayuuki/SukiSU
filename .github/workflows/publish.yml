@@ -98,7 +98,8 @@ jobs:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ARTIFACTS_RUN: ${{ inputs.artifacts_run }}
           # CNB archives are downloaded anonymously; only the repository matters.
-          CNB_ARTIFACT_REPO: ${{ vars.CNB_ARTIFACT_REPO || 'shirkneko/sukisu-artifacts' }}
+          CNB_ARTIFACT_REPO: ${{ vars.CNB_ARTIFACT_REPO || 'sukisu-nova/artifacts' }}
+          CNB_ARTIFACT_TOKEN: ${{ secrets.CNB_ARTIFACT_TOKEN || secrets.CNB_RAW_TOKEN || secrets.CNB_TOKEN }}
         run: |
           set -eux
           . "${GITHUB_WORKSPACE}/.github/scripts/ci/common.sh"
@@ -163,8 +164,7 @@ jobs:
 
       # Ordinary files in a CNB repository, not release assets. The manager
       # reads `manifest.json` from the channel branch and downloads the APKs
-      # through their raw URLs, so the frozen `sukisu-release` release API is
-      # no longer in the path.
+      # through their raw URLs, so no CNB release API is in the path.
       - name: Publish the signed manager as raw files
         if: ${{ inputs.publish && steps.channel.outputs.publish == 'true' }}
         env:

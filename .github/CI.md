@@ -14,11 +14,10 @@ Everything under `.github/` is executed by the CI itself. The two exceptions are
 ├── workflows/       one stage per file, each dispatchable on its own
 ├── image/           the CI image definitions (docker build on the runner host)
 ├── scripts/ci/      shell libraries sourced inside a job
-│                    common.sh, cnb.sh, parallel.sh
+│                    common.sh, cnb-raw-git.sh, parallel.sh
 │                    plus scripts a single step calls:
 │                    ci-checkout.sh, telegram-upload.sh, forgejo-release.sh,
-│                    cnb-raw-publish.sh, cnb-raw-manifest.py,
-│                    and the legacy cnb-upload.sh
+│                    cnb-raw-publish.sh, cnb-raw-manifest.py
 ├── scripts/         upload-telegram.sh (called by telegram-upload.sh on the
 │                    runner), setup-rust-build.sh
 ├── riscv64-cargo.toml
@@ -172,23 +171,21 @@ so artifacts move through these places, tried in this order by
 2. **EasyTier peer** — each runner serves `/ci/runs` on port 18080
    (`scripts/host/artifact-server.sh`), so the other host can fetch the same tree.
    Flat files only: the manifest fetch rejects any entry containing `/`.
-3. **CNB** — every artifact is also archived as `<run_id>__<name>.tar.gz` on the
-   single release `ci-artifacts` of `CNB_ARTIFACT_REPO` (default
-   `shirkneko/sukisu-artifacts`). This is the path that works across hosts *and*
-   across runs, and it carries the directory layout the peer cannot. Downloads
-   are anonymous, and the release is created as a prerelease so the manager's
-   stable channel never picks it up.
+3. **CNB** — every artifact is also published as ordinary files in
+   `CNB_ARTIFACT_REPO` (default `sukisu-nova/artifacts`): one branch per run
+   (`run-<run_id>`), one directory per artifact, with the `manifest.json` that
+   lists its files. This is the path that works across hosts *and* across runs,
+   and it carries the directory layout the peer cannot. Downloads are anonymous
+   raw URLs; no CNB release is created or read anywhere.
 
-   The archives live in their own repository (`CNB_ARTIFACT_REPO`, default
-   `shirkneko/sukisu-artifacts`), separate from the raw publication repository
-   (`CNB_RAW_REPO`, default `sukisu-nova/Release`), and releases in it are never
-   created or deleted per run — a release per run, created and deleted on every
-   build, is what got the old `sukisu-result` repository removed for release
-   abuse. The run id lives in the asset name instead, and
-   `ci_artifact_cnb_prune` deletes the assets of runs older than the newest
-   `CI_ARTIFACT_KEEP_RUNS` (default 5), once per run per runner, never touching
-   the run that is pruning. Older runs therefore cannot be fetched from CNB any
-   more; they stay on `/ci` only where they were produced.
+   Publishing does not download the stored files: the branch tree is fetched
+   with `--filter=blob:none`, so a job pulls a few tree objects and uploads only
+   its own files. `ci_artifact_cnb_prune` deletes the branches of runs older
+   than the newest `CI_ARTIFACT_KEEP_RUNS` (default 5), once per run per runner,
+   never touching the run that is pruning — deleting the branch is also what
+   makes the files unreachable instead of accumulating in history. Older runs
+   therefore cannot be fetched from CNB any more; they stay on `/ci` only where
+   they were produced.
 4. **Forgejo Artifacts API** — last resort (zip download); needs a token and is
    the slow endpoint.
 
@@ -199,10 +196,11 @@ only thing Forgejo still stores is release metadata (title and body) the manager
 parses.
 
 Summary links percent-encode one character of the CNB account name
-(`cnb.cool/%73hirkneko/sukisu-artifacts/...`). The runner masks every occurrence
-of a secret value in job output, and on this instance that value is the account
-name, so a plain link arrives as `cnb.cool/***/...`. CNB decodes the escape, so
-the link still works, and the masker no longer matches.
+(`cnb.cool/sukisu-nova/artifacts/...` is written `cnb.cool/%73ukisu-nova/...`).
+The runner masks every occurrence of a secret value in job output, and on this
+instance one of those values is a CNB account name, so a plain link would arrive
+as `cnb.cool/***/...`. CNB decodes the escape, so the link still works, and the
+masker no longer matches.
 
 ```
 /ci/repo-cache/                bare mirror per repository, shared by all jobs
@@ -262,10 +260,11 @@ branch). A dispatch from any other ref signs nothing and publishes nothing.
 `CNB_RAW_TOKEN` (falling back to `CNB_TOKEN`) needs write access to
 `CNB_RAW_REPO`; keeping it separate lets the publication account differ from
 the one used for the internal artifact transport. `CNB_ARTIFACT_REPO` (default
-`shirkneko/sukisu-artifacts`) is separate and still used for the internal
-`<run_id>__*` archives; those are build-to-build transport, not published
-assets. Publishing back to Forgejo uses `RELEASE_API_TOKEN` when set, and the
-built-in `GITHUB_TOKEN` otherwise.
+`sukisu-nova/artifacts`) is separate and holds the build-to-build transport as
+`run-<run_id>` branches of ordinary files; those are not published assets.
+`CNB_ARTIFACT_TOKEN` overrides the token for that repository and falls back to
+`CNB_RAW_TOKEN`, then `CNB_TOKEN`. Publishing back to Forgejo uses
+`RELEASE_API_TOKEN` when set, and the built-in `GITHUB_TOKEN` otherwise.
 
 Telegram delivery is a plain workflow step, not a CNB pipeline: the APKs are
 already in the workspace when the build is published, so `telegram-upload.sh`
