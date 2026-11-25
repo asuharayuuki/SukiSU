@@ -6,7 +6,7 @@ package com.sukisu.nova.data.repository
  */
 object ThemeStoreDefaults {
     private const val PRIMARY_BASE_URL = "https://theme.shirkneko.top/"
-    private const val SECONDARY_BASE_URL = "https://theme1.shirkneko.top/"
+    private const val SECONDARY_BASE_URL = "https://themes.neko.shirkneko.top:8443/"
 
     /** Built-in sources shown in the source picker. */
     val BASE_URLS = listOf(PRIMARY_BASE_URL, SECONDARY_BASE_URL)
