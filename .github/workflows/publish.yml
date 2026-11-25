@@ -140,6 +140,28 @@ jobs:
             echo "-- $split"
             unzip -l "$split" | grep ' lib/' | awk -F/ '{print $2}' | sort -u
           done
+          # Both the CNB manifest and the Forgejo release title carry the
+          # version code, which is part of the signed split's name:
+          #   SukiSU_Nova_v3.0.0-r1_35100-x86_64-release.apk -> 35100
+          # Anchored on the trailing `-<arch>-<buildType>` so the digit run in
+          # front of the architecture is the one that is read. Not
+          # `${name##*_}`: the `x86_64` split carries an underscore of its own,
+          # and `find` may return it first, which is how build 35100 was
+          # published as "(64)". Parsed once here; the steps below read
+          # $APK_VERSION_CODE.
+          apk="$(find apks/split -type f -name '*.apk' -print -quit)"
+          test -n "$apk"
+          base="${apk##*/}"
+          code="$(printf '%s\n' "$base" \
+            | sed -nE 's/^.*_([0-9]+)-[^-]+(-[^-]+)?-(release|debug)(-spoofed)?\.apk$/\1/p')"
+          case "$code" in
+            '' | *[!0-9]*)
+              echo "cannot parse the version code from ${base}" >&2
+              exit 1
+              ;;
+          esac
+          echo "APK_VERSION_CODE=${code}" >> "$GITHUB_ENV"
+          echo "version code: ${code} (from ${base})"
 
       - name: Publish rolling build on /ci
         if: ${{ inputs.publish && steps.channel.outputs.publish == 'true' }}
@@ -181,9 +203,7 @@ jobs:
           set -eu
           tag='${{ steps.channel.outputs.tag }}'
           title='${{ steps.channel.outputs.title }}'
-          apk="$(find apks/split -type f -name '*.apk' | head -n1)"
-          code="${apk##*_}"
-          code="${code%%-*}"
+          code="${APK_VERSION_CODE:?the split step recorded no version code}"
           export CNB_RAW_NAME="${title} (${code})"
           {
             echo "# ${title} (${code})"
@@ -238,17 +258,11 @@ jobs:
           RELEASE_RECREATE: "true"
         run: |
           set -eu
-          src=apks/split
-          apk="$(find "$src" -type f -name '*.apk' | head -n 1)"
-          test -n "$apk"
-          # SukiSU_Nova_<ref>_35001-arm64-v8a-release.apk -> 35001
-          base="$(basename "$apk")"
-          code="${base##*_}"
-          code="${code%%-*}"
+          code="${APK_VERSION_CODE:?the split step recorded no version code}"
           # The app parses the version out of the release title, so a name that
           # does not carry one must fail here rather than publish a broken release.
           case "$code" in
-            '' | *[!0-9]*) echo "cannot parse the version code from ${base}" >&2; exit 1 ;;
+            '' | *[!0-9]*) echo "invalid version code: ${code}" >&2; exit 1 ;;
           esac
           export RELEASE_NAME="${RELEASE_TITLE} (${code})"
           export RELEASE_PRERELEASE=true

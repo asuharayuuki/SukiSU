@@ -109,16 +109,23 @@ if [ "$MANIFEST_ONLY" != "true" ]; then
   cp -a "$ASSETS"/. "$work/apks"/
 fi
 
-python3 "$(dirname "$0")/cnb-raw-manifest.py" \
-  --assets-dir "$ASSETS" \
-  --repo "$REPO" \
-  --asset-branch "$ASSET_BRANCH" \
-  --base-url "$WEB" \
-  --tag "$TAG" \
-  --name "${CNB_RAW_NAME:-$TAG}" \
-  --body-file "${CNB_RAW_BODY_FILE:-}" \
-  --output "$work/manifest.json" \
-  $( [ "$PRERELEASE" = "true" ] && printf '%s' '--prerelease' )
+manifest_args=(
+  --assets-dir "$ASSETS"
+  --repo "$REPO"
+  --asset-branch "$ASSET_BRANCH"
+  --base-url "$WEB"
+  --tag "$TAG"
+  --name "${CNB_RAW_NAME:-$TAG}"
+  --body-file "${CNB_RAW_BODY_FILE:-}"
+  --output "$work/manifest.json"
+)
+# An array, not `$( ... )`: a command substitution here would be word-split, and
+# an unset PRERELEASE would leave an empty argument behind.
+if [ "$PRERELEASE" = "true" ]; then
+  manifest_args+=(--prerelease)
+fi
+
+python3 "$(dirname "$0")/cnb-raw-manifest.py" "${manifest_args[@]}"
 
 git -C "$work" add -A
 git -C "$work" commit -q -m "publish ${TAG}"
